@@ -27,3 +27,6 @@ config = "0.13"
 
 # Used for error handling
 thiserror = "1.0"
+toml = "0.8"
+opener = "0.7"
+anyhow = "1.0"
