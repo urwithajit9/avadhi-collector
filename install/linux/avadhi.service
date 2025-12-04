@@ -1,0 +1,24 @@
+# install/linux/avadhi.service
+[Unit]
+Description=Avadhi System Span Collector Service
+Documentation=https://github.com/urwithajit9/avadhi-collector
+After=network.target
+
+[Service]
+# Type=simple is default for a long-running process like Avadhi
+Type=simple
+
+# User must be the account that has read access to the wtmp log (usually any user is fine)
+# Change 'avadhi-user' to the dedicated user you want to run it as, or just use your current user.
+User=avadhi-user
+Group=avadhi-group
+# Set the location where the binary and Config.toml will reside after installation
+WorkingDirectory=/opt/avadhi/
+ExecStart=/opt/avadhi/avadhi-collector
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
