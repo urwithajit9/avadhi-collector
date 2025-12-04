@@ -33,3 +33,11 @@ The Avadhi Collector is designed to run persistently in the background using the
     ```bash
     sudo systemctl status avadhi.service
     ```
+----
+6.  **Version Release:**
+```bash
+git add .
+git commit -m "feat: A new version release ; featrues: "
+git tag v0.1.0
+git push origin v0.1.0
+    ```
