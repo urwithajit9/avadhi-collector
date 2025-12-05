@@ -1,88 +1,125 @@
 use serde::{Serialize, Deserialize};
-use std::{fs, io::{self, Write}};
-use toml;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
-pub const CONFIG_FILE_PATH: &str = "AvadhiConfig.toml";
-pub const WEB_APP_URL: &str = "YOUR_AVADHI_WEB_APP_URL/login"; // ⚠️ REPLACE THIS
+pub const ADMIN_CONFIG_PATH: &str = "Config.toml";
+pub const USER_CONFIG_PATH: &str = "AvadhiConfig.toml";
 
-/// Configuration structure to save to the TOML file.
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct Config {
-    /// Short-lived token used for daily data API calls.
-    pub access_token: Option<String>, 
-    /// Long-lived token used to acquire new access_tokens.
-    pub refresh_token: Option<String>, 
+// --- Configuration Structs ---
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct AdminConfig {
+    pub web_app_url: Option<String>,
+    pub supabase_url: Option<String>,
+    pub supabase_anon_key: Option<String>,
 }
 
-/// Loads the configuration from the TOML file.
-pub fn load_config() -> Config {
-    match fs::read_to_string(CONFIG_FILE_PATH) {
-        Ok(contents) => {
-            match toml::from_str(&contents) {
-                Ok(config) => config,
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct UserConfig {
+    // Stores the authenticated user's UUID (provided by the user during setup)
+    pub user_id: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+}
+
+// --- File Handling Functions ---
+pub fn load_admin_config() -> AdminConfig {
+    let path = Path::new(ADMIN_CONFIG_PATH);
+    if path.exists() {
+        match fs::read_to_string(path) {
+            Ok(contents) => match toml::from_str(&contents) {
+                Ok(config) => {
+                    println!("Admin configuration loaded successfully from {}.", ADMIN_CONFIG_PATH);
+                    config
+                },
                 Err(e) => {
-                    eprintln!("Warning: Could not parse {}. Creating new config. Error: {}", CONFIG_FILE_PATH, e);
-                    Config::default()
+                    eprintln!("Error parsing {}: {}", ADMIN_CONFIG_PATH, e);
+                    AdminConfig::default()
                 }
+            },
+            Err(e) => {
+                eprintln!("Error reading {}: {}", ADMIN_CONFIG_PATH, e);
+                AdminConfig::default()
             }
-        },
-        Err(_) => {
-            // File not found, likely a first run
-            Config::default()
         }
-    }
-}
-
-/// Saves the current configuration state to the TOML file.
-pub fn save_config(config: &Config) {
-    let toml_string = match toml::to_string(config) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: Could not serialize config. {}", e);
-            return;
-        }
-    };
-    match fs::write(CONFIG_FILE_PATH, toml_string) {
-        Ok(_) => println!("Configuration saved successfully."),
-        Err(e) => eprintln!("Error: Could not write config to {}. {}", CONFIG_FILE_PATH, e),
-    }
-}
-
-/// Handles the interactive setup for the user (first run or token expired).
-pub fn initial_setup_and_login(config: &mut Config) {
-    println!("\n--- Avadhi Authentication Required ---");
-    println!("Step 1: Logging in to Supabase.");
-
-    if let Err(e) = opener::open(WEB_APP_URL) {
-        eprintln!("Could not automatically open browser. Please navigate to: {}", WEB_APP_URL);
-        eprintln!("Error: {}", e);
     } else {
-        println!("Browser opened to the login page ({}).", WEB_APP_URL);
+        eprintln!("Admin configuration file {} not found.", ADMIN_CONFIG_PATH);
+        AdminConfig::default()
     }
+}
 
-    println!("\nStep 2: After logging in via the web app, please copy BOTH your Access Token and Refresh Token.");
-    println!("(The web app must display these tokens in a secure settings page.)");
-    
-    // Prompt for Access Token
-    print!("\nEnter Access Token (JWT): ");
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    if io::stdin().read_line(&mut input).is_ok() {
-        config.access_token = Some(input.trim().to_string());
+pub fn load_user_config() -> UserConfig {
+    let path = Path::new(USER_CONFIG_PATH);
+    if path.exists() {
+        match fs::read_to_string(path) {
+            Ok(contents) => match toml::from_str(&contents) {
+                Ok(config) => {
+                    println!("User configuration loaded successfully from {}.", USER_CONFIG_PATH);
+                    config
+                },
+                Err(e) => {
+                    eprintln!("Error parsing {}: {}", USER_CONFIG_PATH, e);
+                    UserConfig::default()
+                }
+            },
+            Err(e) => {
+                eprintln!("Error reading {}: {}", USER_CONFIG_PATH, e);
+                UserConfig::default()
+            }
+        }
+    } else {
+        println!("User configuration file {} not found. Will prompt for login details.", USER_CONFIG_PATH);
+        UserConfig::default()
     }
-    
+}
+
+pub fn save_user_config(user_config: &UserConfig) {
+    match toml::to_string(user_config) {
+        Ok(contents) => {
+            match fs::write(USER_CONFIG_PATH, contents) {
+                Ok(_) => println!("User configuration saved successfully."),
+                Err(e) => eprintln!("Error writing to {}: {}", USER_CONFIG_PATH, e),
+            }
+        }
+        Err(e) => eprintln!("Error serializing user config: {}", e),
+    }
+}
+
+
+/// Prompts the user for necessary credentials (User ID, Access/Refresh Tokens) and saves them.
+pub fn initial_setup_and_login(admin_config: &AdminConfig, user_config: &mut UserConfig) {
+    println!("\n--- Avadhi Collector User Setup Required ---");
+
+    let login_url = admin_config.web_app_url.as_deref()
+        .unwrap_or("https://avadhi-time-tracker.vercel.app/login (Default - Check Config.toml)");
+
+    println!("\nStep 1: Logging in to Supabase.");
+    println!("Browser opened to the login page ({}).", login_url);
+
+    println!("\nStep 2: After logging in via the web app, please copy your User ID, Access Token, and Refresh Token.");
+
+    // Prompt for User ID
+    print!("Enter User ID (UUID): ");
+    io::stdout().flush().unwrap();
+    let mut user_id = String::new();
+    io::stdin().read_line(&mut user_id).unwrap();
+    user_config.user_id = Some(user_id.trim().to_string());
+
+    // Prompt for Access Token
+    print!("Enter Access Token (JWT): ");
+    io::stdout().flush().unwrap();
+    let mut access_token = String::new();
+    io::stdin().read_line(&mut access_token).unwrap();
+    user_config.access_token = Some(access_token.trim().to_string());
+
     // Prompt for Refresh Token
-    input.clear();
     print!("Enter Refresh Token: ");
     io::stdout().flush().unwrap();
-    if io::stdin().read_line(&mut input).is_ok() {
-        config.refresh_token = Some(input.trim().to_string());
-    }
+    let mut refresh_token = String::new();
+    io::stdin().read_line(&mut refresh_token).unwrap();
+    user_config.refresh_token = Some(refresh_token.trim().to_string());
 
-    if config.access_token.is_some() && config.refresh_token.is_some() {
-        save_config(config);
-        println!("Tokens saved. You can now use the collector.");
-    } else {
-        eprintln!("\nSetup failed: Missing one or both tokens. Please try again.");
-    }
+
+    save_user_config(user_config);
+    println!("Tokens saved to {}.", USER_CONFIG_PATH);
 }
