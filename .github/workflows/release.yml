@@ -10,6 +10,8 @@ jobs:
   build-linux:
     name: Build Linux Binary and Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +42,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: avadhi-linux.tar.gz
-          body: |
-            ## Avadhi Collector - ${{ github.ref_name }}
+          body_path: release_notes.md
 
-            This release contains the Linux binary and systemd service file for persistent background operation.
+          # Overwrite the file if a release with the same tag exists
+          overwrite_files: true
 
-            ### Linux Installation Instructions
-            (See README for full details)
-            1. Download and extract 'avadhi-linux.tar.gz'.
-            2. Follow the instructions in the 'install.sh' script to set up the systemd service.
+          # The token is usually pulled automatically from the environment
+          # or explicitly passed using 'token: ${{ secrets.GITHUB_TOKEN }}'
+          # If you used 'token: ***' in the example, this is how it should look:
+          token: ${{ secrets.GITHUB_TOKEN }} # Use the GitHub provided token secret
