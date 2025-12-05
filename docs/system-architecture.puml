@@ -1,0 +1,60 @@
+@startuml Avadhi_System_Architecture
+skinparam monochrome false
+skinparam package {
+  BackgroundColor lightblue
+  BorderColor darkblue
+}
+
+title Avadhi Time Collector System Architecture
+
+' --- Actors/Users ---
+actor User as U
+
+' --- Components ---
+package "Client Device (Rust Collector)" {
+  component "Rust Collector (avadhi_collector)" as RUST <<Rust, CLI>>
+  database "System Logs/Events (via 'last')" as LOGS
+  component "Local Config (AvadhiConfig.toml)" as CONFIG_USER
+}
+
+package "Backend Infrastructure" {
+  cloud "Supabase Cloud" as SB
+  database "Postgres DB" as DB
+  component "Auth Service" as AUTH
+}
+
+package "Frontend & CI/CD" {
+  component "Web Application (Vercel)" as WEB_APP <<React>>
+  component "GitHub Actions (CI/CD)" as GHA <<Workflow>>
+  component "Source Code (GitHub)" as GH
+}
+
+' --- Relationships / Data Flow ---
+
+' RUST DATA FLOW
+RUST -> LOGS : 1. Reads raw boot/shutdown data
+RUST -> RUST : 2. Parses & Calculates Daily Spans
+RUST -> CONFIG_USER : 3. Writes/Reads Access Tokens, User ID
+RUST -> AUTH : 4. Requests Token Refresh (using Refresh Token)
+RUST -> DB : 5. **UPSERT** Daily Work Spans (using Access Token)
+DB -> RUST : 6. Returns RLS/Success status
+
+' AUTH FLOW
+U --|> RUST : 7. Manual Input (User ID, Tokens)
+U -> WEB_APP : 8. Login/Registration
+WEB_APP -> AUTH : 9. Authentication Request
+AUTH -> WEB_APP : 10. Returns Tokens
+
+' DATABASE/SECURITY
+DB -[hidden]up-> AUTH
+SB -up-> DB
+SB -up-> AUTH
+DB -right-> SB : RLS Policies enforced
+
+' DEVELOPMENT FLOW
+GH <-down-> RUST : Rust Source Code
+GH -> GHA : Trigger Build
+GHA -> WEB_APP : Deploy Frontend
+GHA -> RUST : Compile Collector
+
+@enduml

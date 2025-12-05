@@ -1,0 +1,29 @@
+@startuml Avadhi_Database_ERD
+skinparam linetype ortho
+skinparam monochrome true
+skinparam style strict
+
+title Avadhi Supabase ERD
+
+entity "auth.users" {
+    * id: uuid <<primary key>>
+    --
+    created_at: timestamp with time zone
+    email: text
+    ...
+}
+
+entity "daily_work_span" {
+    * date: date <<primary key>>
+    --
+    * user_id: uuid <<primary key, references auth.users>>
+    total_span_minutes: integer
+    total_span: text
+    first_boot: time without time zone
+    last_shutdown: time without time zone
+    created_at: timestamp with time zone
+    updated_at: timestamp with time zone
+}
+
+"auth.users" ||--o{ "daily_work_span" : has
+@enduml

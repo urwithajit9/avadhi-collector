@@ -1,0 +1,67 @@
+@startuml Avadhi_Collector_Data_Flow
+skinparam defaultFontName Noto Sans
+skinparam monochrome true
+skinparam style strict
+
+title Avadhi Collector Execution Workflow
+
+start
+
+group Initial Setup & Authentication
+  :Load AvadhiConfig.toml;
+
+  if (Access Token found?) then (No)
+    :Tokens/User ID Missing?;
+    :Prompt User for UUID, Tokens;
+    :Save AvadhiConfig.toml;
+    partition "Auth Status" {
+      :Authentication Ready;
+    }
+  else (Yes)
+    partition "Auth Status" {
+      :Authentication Ready;
+    }
+  endif
+end group
+
+group Data Collection and Transformation
+  :fetch_last_logs() - Run 'last -x -F reboot';
+  :Parse Raw Logs into SessionRecord Vector;
+  :calculate_spans() - Aggregate Sessions by Day;
+  :Convert to Vector of WorkSpanData;
+end group
+
+:Initialize Daily WorkSpanData Iterator;
+
+group API Posting with Resilience
+  repeat
+    :Get next WorkSpanData (data);
+
+    ' Define the retry label here
+    label retry_post
+    :post_work_span(data);
+
+    if (API Response Status) is (401 Unauthorized) then (Handle 401)
+      :refresh_access_token();
+      if (Refresh successful?) then (Success)
+        -> retry_post; ' Go back to retry_post
+      else (Failure)
+        :Exit/Manual Setup Required;
+        break
+      endif
+    elseif (API Response Status) is (5xx/Network Error) then (Handle Retry)
+      if (Retry with Exponential Backoff?) then (Yes)
+        -> retry_post; ' Go back to retry_post
+      else (No)
+        :Exit with Fatal Error;
+        break
+      endif
+    else (200/201 Success)
+      :Successful Post;
+    endif
+  repeat while (End Iteration?) is (No)
+end group
+
+:Collector Finished Successfully;
+
+stop
