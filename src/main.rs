@@ -2,13 +2,13 @@ mod config;
 mod api;
 
 // --- Imports for Data Parsing and Time Calculations ---
-use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, NaiveDate};
 use std::{collections::HashMap, process::Command};
 use regex::Regex;
 use anyhow::{anyhow, Result};
 // --- End Data Parsing Imports ---
 
-use crate::config::{load_admin_config, load_user_config, initial_setup_and_login, AdminConfig, UserConfig};
+use crate::config::{load_admin_config, load_user_config, initial_setup_and_login, AdminConfig, UserConfig, save_user_config};
 use crate::api::{post_work_span, WorkSpanData};
 use tokio;
 
@@ -24,7 +24,7 @@ struct SessionRecord {
 /// Constant for parsing the output format of the 'last' command
 const LAST_DATE_FORMAT: &str = "%a %b %d %H:%M:%S %Y";
 
-// --- Data Parsing Functions (Restored from previous version) ---
+// --- Data Parsing Functions (UNCHANGED) ---
 
 /// Executes the 'last' command and parses raw output into structured session records.
 async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
@@ -42,7 +42,7 @@ async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
     let mut sessions = Vec::new();
 
     // Regex to capture start time and optional end time
-    let re = Regex::new(r"reboot\s+system boot\s+.*?\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(?:-\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})|still running)")
+    let re = Regex::new(r"reboot\s+system boot\s+.*?\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(?:-\s+([A-Z][a-z]{2}\s+[A-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})|still running)")
         .map_err(|e| anyhow!("Regex Error: {}", e))?;
 
     for line in stdout.lines() {
@@ -151,36 +151,134 @@ fn calculate_spans(sessions: Vec<SessionRecord>) -> Result<Vec<WorkSpanData>> {
 }
 
 
+/// Filters the calculated WorkSpanData to only include entries newer than or equal to
+/// the date stored in the user configuration (last_posted_date).
+fn filter_data_for_posting(
+    mut historical_data: Vec<WorkSpanData>,
+    user_config: &UserConfig,
+) -> Vec<WorkSpanData> {
+
+    let last_posted_date = match user_config.last_posted_date.as_ref() {
+        Some(date_str) => NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok(),
+        None => None,
+    };
+
+    if last_posted_date.is_none() {
+        println!("[WARN] No last posted date found in config. Posting all calculated history.");
+        return historical_data;
+    }
+
+    let filter_date = last_posted_date.unwrap();
+
+    // --- CHANGE 1: Use >= instead of > ---
+    // This ensures we always re-post the last recorded day (the "Yesterday" data)
+    // to finalize its shutdown time.
+    historical_data.retain(|data| {
+        if let Ok(data_date) = NaiveDate::parse_from_str(&data.date, "%Y-%m-%d") {
+            // Keep data if date is equal to OR greater than the last posted date
+            data_date >= filter_date
+        } else {
+            // Log an error if date parsing fails for an entry, but keep it just in case
+            eprintln!("[ERROR] Failed to parse date in historical data: {}", data.date);
+            true
+        }
+    });
+    // --- END CHANGE 1 ---
+
+    println!("[INFO] Filtering data to start from or after: {}.", filter_date);
+
+
+    // Sort by date to ensure we post chronologically (essential for configuration update logic)
+    historical_data.sort_by(|a, b| a.date.cmp(&b.date));
+
+    historical_data
+}
+
+
 /// Main entry point for the data collector logic: retrieves data and posts it asynchronously.
 async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserConfig) -> Result<()> {
 
-    let historical_data = match fetch_last_logs().await {
-        Ok(sessions) => calculate_spans(sessions)?,
+    let current_day_naive = Local::now().date_naive();
+    println!("[INFO] Collector running on day: {}", current_day_naive.format("%Y-%m-%d"));
+
+    let sessions = match fetch_last_logs().await {
+        Ok(s) => s,
         Err(e) => {
             eprintln!("[FATAL] Failed to retrieve and calculate historical data: {}. Cannot post anything.", e);
             return Err(e.into());
         }
     };
 
-    let total_entries = historical_data.len();
+    let all_historical_data = calculate_spans(sessions)?;
+
+    // 1. FILTER: Only process data newer than or equal to the last successful post
+    let data_to_post = filter_data_for_posting(all_historical_data, user_config);
+
+    let total_entries = data_to_post.len();
+
     if total_entries == 0 {
-        println!("No historical work span data was found to post.");
+        println!("No new work span data found to post since last run.");
         return Ok(());
     }
 
-    println!("\n[INFO] Starting posting process for {} historical days.", total_entries);
+    println!("\n[INFO] Starting posting process for {} historical day(s).", total_entries);
 
-    for data in historical_data {
+    let mut last_successful_date_posted: Option<String> = user_config.last_posted_date.clone();
+
+    for data in data_to_post {
         println!("\n--- Processing data for date: {} ---", data.date);
-        // post_work_span handles authentication, refresh, and exponential backoff
-        post_work_span(data, admin_config, user_config).await?;
+
+        // 2. POST: Post the data
+        match post_work_span(data.clone(), admin_config, user_config).await {
+            Ok(_) => {
+                // Determine if this successfully posted date is "Today"
+                let posted_date_naive = match NaiveDate::parse_from_str(&data.date, "%Y-%m-%d") {
+                    Ok(d) => d,
+                    Err(_) => {
+                        eprintln!("[ERROR] Failed to parse posted date string '{}'. Skipping config update for safety.", data.date);
+                        continue;
+                    }
+                };
+
+                // --- CHANGE 2: Conditional Config Update ---
+                // We only update the config date if the successfully posted data is NOT today.
+                // This ensures "Today" is re-posted tomorrow for finalization.
+                if posted_date_naive < current_day_naive {
+                    last_successful_date_posted = Some(data.date);
+                } else {
+                    println!("[INFO] Posted data for today ({}). Will NOT update config to this date to ensure finalization tomorrow.", data.date);
+                }
+                // --- END CHANGE 2 ---
+            },
+            Err(e) => {
+                eprintln!("[ERROR] Failed to post data for date {}: {}. Aborting remaining posts.", data.date, e);
+                // If posting fails, we stop the iteration.
+                break;
+            }
+        }
     }
 
-    println!("\nCollector run finished successfully. All {} entries posted.", total_entries);
+    // 3. UPDATE CONFIG: Persist the last successfully finalized date (which is yesterday or older).
+    if user_config.last_posted_date != last_successful_date_posted {
+        user_config.last_posted_date = last_successful_date_posted.clone();
+
+        save_user_config(user_config);
+
+        if let Some(date) = last_successful_date_posted {
+             println!("\n[SUCCESS] User configuration updated. Last FINALIZED post date is now: {}", date);
+        } else {
+             println!("\n[INFO] No finalized posts were made in this run, or all posts failed.");
+        }
+    } else {
+        println!("\n[INFO] Last finalized date remains unchanged.");
+    }
+
+
+    println!("\nCollector run finished successfully.");
     Ok(())
 }
 
-// --- Main Execution Block ---
+// --- Main Execution Block (UNCHANGED) ---
 
 fn main() {
     // 1. Load static Admin Configuration

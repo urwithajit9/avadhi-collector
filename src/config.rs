@@ -20,6 +20,10 @@ pub struct UserConfig {
     pub user_id: Option<String>,
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
+
+    /// Field used by main.rs to prevent re-posting of historical data.
+    /// Stores the date (YYYY-MM-DD) of the last successfully posted day.
+    pub last_posted_date: Option<String>, // Made pub for external modification
 }
 
 // --- File Handling Functions ---
@@ -73,11 +77,12 @@ pub fn load_user_config() -> UserConfig {
     }
 }
 
+/// Serializes and saves the updated UserConfig back to the configuration file.
 pub fn save_user_config(user_config: &UserConfig) {
-    match toml::to_string(user_config) {
+    match toml::to_string_pretty(user_config) { // Using pretty to make the file readable
         Ok(contents) => {
             match fs::write(USER_CONFIG_PATH, contents) {
-                Ok(_) => println!("User configuration saved successfully."),
+                Ok(_) => println!("[INFO] User configuration saved successfully to {}.", USER_CONFIG_PATH),
                 Err(e) => eprintln!("Error writing to {}: {}", USER_CONFIG_PATH, e),
             }
         }

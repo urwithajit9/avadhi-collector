@@ -3,11 +3,11 @@ use serde_json::{json, Value};
 use anyhow::{anyhow, Result};
 use crate::config::{AdminConfig, UserConfig, save_user_config, initial_setup_and_login};
 use std::fmt::Debug;
-use tokio::time::{sleep, Duration}; // Added tokio time for delays
+use tokio::time::{sleep, Duration};
 
 // === CONSTANTS ===
 const TABLE_NAME: &str = "daily_work_span";
-const MAX_RETRIES: u8 = 3; // Max attempts for transient errors
+const MAX_RETRIES: u8 = 3;
 
 // === DATA STRUCTURE ===
 #[derive(Debug, Clone)]
@@ -49,26 +49,44 @@ async fn refresh_access_token(admin_config: &AdminConfig, user_config: &mut User
         .await?;
 
     if res.status().is_success() {
-        let body: Value = res.json().await?;
+        let body_result: Result<Value, _> = res.json().await;
 
+        let body = match body_result {
+            Ok(b) => b,
+            Err(e) => return Err(anyhow!("Failed to parse successful refresh response body: {}", e)),
+        };
+
+        // Ensure both tokens are present before updating config
         let new_access_token = body["access_token"].as_str().map(|s| s.to_string());
         let new_refresh_token = body["refresh_token"].as_str().map(|s| s.to_string());
 
         if let (Some(new_access), Some(new_refresh)) = (new_access_token, new_refresh_token) {
+            // CRITICAL: Update in-memory config
             user_config.access_token = Some(new_access);
             user_config.refresh_token = Some(new_refresh);
-            // User ID is NOT fetched here, it must be provided at setup.
+
+            // CRITICAL: Immediately save new tokens to disk (single-use token protection)
             save_user_config(user_config);
             println!("Tokens successfully refreshed and saved.");
             Ok(())
         } else {
-            Err(anyhow!("Token refresh failed: response from Supabase was malformed (missing tokens)."))
+            // This is a successful status but a bad payload (e.g., tokens missing)
+            Err(anyhow!("Token refresh failed: successful response was malformed (missing tokens). Body: {:?}", body))
         }
     } else {
         let status = res.status();
         let body = res.text().await.unwrap_or_else(|_| String::from("No response body"));
         eprintln!("Refresh API Error: Status {} - Response: {}", status, body);
-        Err(anyhow!("Failed to refresh token: Status {}", status))
+
+        // Check for the specific fatal error
+        if body.contains("refresh_token_already_used") {
+            // If the single-use token was consumed, automatic recovery is impossible.
+            eprintln!("FATAL: Refresh token consumed. Manual re-authentication is required.");
+            // We return an error, which will be caught in post_work_span, leading to initial_setup_and_login.
+            Err(anyhow!("Refresh token consumed (Already Used)."))
+        } else {
+            Err(anyhow!("Failed to refresh token: Status {}", status))
+        }
     }
 }
 
@@ -77,17 +95,14 @@ async fn refresh_access_token(admin_config: &AdminConfig, user_config: &mut User
 pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user_config: &mut UserConfig) -> Result<()> {
 
     let data_to_post = data;
-    let mut retries = 0; // Initialize retry counter
+    let mut retries = 0;
 
     loop {
-        // 1. Authentication Check & Config Retrieval
-
-        // --- Get all required config values ---
+        // ... (1. Authentication Check & Config Retrieval - Unchanged)
         let access_token = match user_config.access_token.as_ref() {
             Some(token) => token,
             None => {
                 eprintln!("Access token missing. Cannot proceed with posting data. Running initial user setup.");
-                // initial_setup_and_login will populate tokens and user_id via prompt
                 initial_setup_and_login(admin_config, user_config);
                 if user_config.access_token.is_none() {
                     return Err(anyhow!("Authentication failed and tokens are still missing after setup."));
@@ -96,19 +111,14 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
             }
         };
 
-        // *** HIGHLIGHT: Ensure User ID is present (it must be from the prompt) ***
         let user_id = match user_config.user_id.as_ref() {
             Some(id) => id,
             None => {
-                // If user_id is missing, it means the config is incomplete. Re-run setup.
                 eprintln!("User ID missing in config. Running initial user setup to collect User ID.");
                 initial_setup_and_login(admin_config, user_config);
-                // If setup still doesn't provide it, we exit on next loop iteration's access_token check,
-                // but for now, we continue and let the setup resolve it.
                 continue;
             }
         };
-        // -----------------------------------------------------------------------
 
         let supabase_url = match admin_config.supabase_url.as_ref() {
             Some(url) => url,
@@ -120,7 +130,7 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
         };
         // ------------------------------------------
 
-        // 2. Prepare Request
+        // 2. Prepare Request (UNCHANGED)
         let client = Client::new();
         let url = format!("{}/rest/v1/{}", supabase_url, TABLE_NAME);
 
@@ -157,7 +167,7 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
 
         println!("Attempting to post data to Supabase (Attempt {})...", retries + 1);
 
-        // 3. Send Request
+        // 3. Send Request (UNCHANGED)
         let res = match client.post(&url)
             .headers(headers)
             .json(&payload)
@@ -172,7 +182,7 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
                 if retries >= MAX_RETRIES {
                     return Err(anyhow!("Failed to post data after {} network retries: {}", MAX_RETRIES, e));
                 }
-                sleep(Duration::from_secs(2u64.pow(retries as u32))).await; // Exponential backoff
+                sleep(Duration::from_secs(2u64.pow(retries as u32))).await;
                 continue;
             }
         };
@@ -195,12 +205,15 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
                     },
                     Err(e) => {
                         eprintln!("Automatic token refresh failed: {}. Attempting manual re-authentication.", e);
+
+                        // Only run manual setup if the auto-refresh failed.
                         initial_setup_and_login(admin_config, user_config);
 
                         if user_config.access_token.is_some() {
                             println!("Manual re-authentication succeeded. Retrying...");
                             continue;
                         } else {
+                            // If the user fails to provide new tokens, we must exit.
                             return Err(anyhow!("Failed to automatically refresh token and manual re-authentication also failed."));
                         }
                     }
@@ -215,7 +228,7 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
                 if retries >= MAX_RETRIES {
                     return Err(anyhow!("Failed to post data after {} server retries: Status {}", MAX_RETRIES, s));
                 }
-                sleep(Duration::from_secs(2u64.pow(retries as u32))).await; // Exponential backoff
+                sleep(Duration::from_secs(2u64.pow(retries as u32))).await;
                 continue;
             }
 

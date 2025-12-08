@@ -1,43 +1,148 @@
-## 💾 Installation on Linux (systemd)
+# 🕒 Avadhi Time Collector - Linux Installation Guide
 
-The Avadhi Collector is designed to run persistently in the background using the `systemd` service manager.
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange)](https://www.rust-lang.org/)
 
-### Prerequisites
+The **Avadhi Time Collector** is a lightweight Rust application that runs as a persistent background service on Linux. It reads your system's boot/shutdown logs (`wtmp`) to calculate daily work spans and posts the data to the [Avadhi Time Tracker web app](https://www.avadhi.space/).
 
-1.  A PostgreSQL/Supabase database already set up.
-2.  Your Supabase URL and Service Role Key (from your Supabase project settings).
+This guide shows how to **install and configure the collector using Systemd**.
 
-### Step-by-Step Guide
+---
 
-1.  **Download the Release:**
-    Download the latest `avadhi-linux.tar.gz` from the [GitHub Releases Page].
-2.  **Extract the Files:**
-    ```bash
-    tar -xzvf avadhi-linux.tar.gz
-    cd avadhi-linux
-    ```
-3.  **Configure:**
-    Copy the example configuration and add your Supabase credentials:
-    ```bash
-    cp Config.toml.example Config.toml
-    # Use a text editor to update Config.toml with your keys!
-    nano Config.toml
-    ```
-4.  **Install the Service:**
-    Run the provided installation script. This script moves the files to `/opt/avadhi/` and registers the systemd service.
-    ```bash
-    sudo ./install.sh
-    ```
-5.  **Verify Status:**
-    Check that the service is running and enabled on boot:
-    ```bash
-    sudo systemctl status avadhi.service
-    ```
-----
-6.  **Version Release:**
+## 📋 Prerequisites
+
+- Linux distribution with **Systemd** (Ubuntu, Debian, Fedora, Arch, etc.)
+- Active user account on [Avadhi Time Tracker](https://www.avadhi.space/)
+- Basic terminal knowledge and `sudo` privileges
+
+---
+
+## 🚀 Installation Steps
+
+The installation is divided into **three phases**: preparation, service installation, and user authentication.
+
+---
+
+### Phase 1: Preparation (Download & Extract)
+
+1. **Download** the latest `avadhi-linux.tar.gz` from the GitHub Releases page.
+2. **Extract** the archive:
+
 ```bash
-git add .
-git commit -m "feat: A new version release ; featrues: "
-git tag v0.1.0
-git push origin v0.1.0
-    ```
+# Move to your home directory and extract
+cd ~
+tar -xzvf path/to/avadhi-linux.tar.gz
+
+# Navigate to the extracted folder
+cd avadhi-linux
+````
+
+---
+
+### Phase 2: Service Installation
+
+The package includes an `install.sh` script to automate setup and install the Systemd service.
+
+1. **Optional**: Review configuration in `Config.toml`.
+
+   * Preconfigured for `https://www.avadhi.space/`.
+   * Edit only if using a custom backend.
+
+2. **Run the Installer**:
+
+```bash
+# Make script executable
+chmod +x install.sh
+
+# Run the installer with sudo
+sudo ./install.sh
+```
+
+> The installer creates a service instance named:
+>
+> ```text
+> avadhi@yourusername.service
+> ```
+
+---
+
+### Phase 3: Mandatory User Authentication
+
+The service starts automatically after installation but will **not post data** until you provide your credentials.
+
+1. **Run the Collector Manually** (as your standard user, **not sudo**):
+
+```bash
+cd /opt/avadhi-collector
+./avadhi-collector
+```
+
+2. **Authenticate**:
+
+* Visit [https://www.avadhi.space/auth](https://www.avadhi.space/auth)
+* Retrieve your **User ID (UUID)**, **Access Token (JWT)**, and **Refresh Token**
+* Paste the credentials in the terminal prompt
+
+> Once saved, the collector exits automatically.
+
+---
+
+### Final Step: Start the Persistent Service
+
+Restart the service to enable background collection:
+
+```bash
+# Identify your service instance
+SERVICE_INSTANCE="avadhi@$(whoami).service"
+echo "Service Name: $SERVICE_INSTANCE"
+
+# Restart service
+sudo systemctl restart $SERVICE_INSTANCE
+
+# Verify status
+sudo systemctl status $SERVICE_INSTANCE
+```
+
+You should see:
+
+```
+Active: active (running)
+```
+
+---
+
+## 🛠 Troubleshooting & Logs
+
+View real-time logs:
+
+```bash
+sudo journalctl -u avadhi@$(whoami).service -f -n 50
+```
+
+<details>
+<summary>⚠️ Common Error: Token unauthorized / expired (401)</summary>
+
+If you see `API Error: Token unauthorized or expired (401)`, the service is running but the tokens are invalid.
+
+**Solution**: Re-run the **manual authentication step (Phase 3)** to refresh your credentials.
+
+</details>
+
+---
+
+## 📌 Notes
+
+* The service runs **per user**, so multiple users need separate instances.
+* Configurations are stored in `/opt/avadhi-collector/AvadhiConfig.toml`.
+* Designed for **long-term, continuous monitoring** of system work spans.
+
+---
+
+## 🔗 Useful Links
+
+* [Avadhi Web App](https://www.avadhi.space/)
+* [GitHub Releases](https://github.com/your-repo/avadhi-time-collector/releases)
+
+
+
+

@@ -1,4 +1,3 @@
-# .github/workflows/release.yml
 name: Release Avadhi Collector
 
 on:
@@ -11,43 +10,48 @@ jobs:
     name: Build Linux Binary and Package
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Required for softprops/action-gh-release
 
     steps:
       - uses: actions/checkout@v4
 
       # 1. Install Rust Toolchain
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
       # 2. Build the Linux binary (Release mode)
-      - name: Build Release
+      - name: Build Release Binary
         run: cargo build --release
 
-      # 3. Create the Distribution Directory
-      - name: Setup Packaging
+      # 3. Create the Distribution Directory and Copy Assets
+      - name: Setup Packaging Directory
         run: |
+          # Create the folder that will be archived
           mkdir avadhi-linux
+
+          # Copy the compiled binary
           cp target/release/avadhi-collector avadhi-linux/
+
+          # Copy the Admin Configuration template
           cp Config.toml.example avadhi-linux/
+
+          # Copy the installation script
+          cp install/linux/install.sh avadhi-linux/
+
+          # Copy the Systemd service template
           cp install/linux/avadhi.service avadhi-linux/
 
-      # 4. Create the final compressed archive
+      # 4. Create the final compressed archive (tarball)
       - name: Archive Release Assets
         run: tar -czvf avadhi-linux.tar.gz avadhi-linux
 
       # 5. Create GitHub Release and Upload Assets
-      - name: Create Release
+      - name: Create GitHub Release and Upload
         uses: softprops/action-gh-release@v2
         with:
           files: avadhi-linux.tar.gz
-          body_path: release_notes.md
-
-          # Overwrite the file if a release with the same tag exists
+          body_path: README.md # Use the README as the release description
           overwrite_files: true
-
-          # The token is usually pulled automatically from the environment
-          # or explicitly passed using 'token: ${{ secrets.GITHUB_TOKEN }}'
-          # If you used 'token: ***' in the example, this is how it should look:
-          token: ${{ secrets.GITHUB_TOKEN }} # Use the GitHub provided token secret
+          token: ${{ secrets.GITHUB_TOKEN }}
