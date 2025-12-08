@@ -5,6 +5,21 @@
 
 The **Avadhi Time Collector** is a lightweight Rust application that runs as a persistent background service on Linux. It reads your system's boot/shutdown logs (`wtmp`) to calculate daily work spans and posts the data to the [Avadhi Time Tracker web app](https://www.avadhi.space/).
 
+```bash
+
+curl -fsSL https://avadhi.space/install.sh | bash
+
+curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/scripts/install-bootstrap.sh | bash
+
+````
+### The Benefits
+
+1.  **Simplicity:** Users only have to copy and paste one line into their terminal.
+2.  **Automation:** The script handles download, extraction, and running the installer.
+3.  **Correct Permissions:** By running the bootstrap script via `bash`, we can control when and how `sudo` is called to run the `install.sh` script, ensuring the correct file permissions and service setup.
+
+This is the recommended and professional way to distribute Linux software. You should update your website's instructions to use this single-line command.
+
 This guide shows how to **install and configure the collector using Systemd**.
 
 ---
