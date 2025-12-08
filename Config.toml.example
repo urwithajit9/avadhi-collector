@@ -1,0 +1,12 @@
+# Config.toml
+
+# --- Supabase REST API Credentials ---
+supabase_url = "https://lqfvugvggwrdrsuwnbey.supabase.co"
+
+# --- Scheduling ---
+# Time (in 24hr format) when the service should run its daily check
+daily_check_hour = 1
+daily_check_minute = 0
+
+web_app_url = "https://www.avadhi.space/auth"
+supabase_anon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxZnZ1Z3ZnZ3dyZHJzdXduYmV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4Mjk4MDgsImV4cCI6MjA4MDQwNTgwOH0.3w71pb19hSsNfkjS9G1U6YyKlpUQIe15W49QP5eVjIg"
