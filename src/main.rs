@@ -1,21 +1,18 @@
+// Correct imports for the necessary modules (defined in lib.rs or separate files)
 mod config;
 mod api;
 
-// --- Add CLAP import for Command Line Argument Parsing ---
-use clap::Parser;
-// --- End CLAP import ---
-
-// --- Imports for Data Parsing and Time Calculations ---
+// --- Imports for Command Line Argument Parsing and Core Logic ---
+use clap::{Parser, Subcommand}; // Added Subcommand import
 use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, NaiveDate};
 use std::{collections::HashMap, process::Command};
 use regex::Regex;
 use anyhow::{anyhow, Result};
-// --- End Data Parsing Imports ---
+use tokio;
 
 // NOTE: The signature for 'initial_setup_and_login' MUST be updated in config.rs
 use crate::config::{load_admin_config, load_user_config, initial_setup_and_login, AdminConfig, UserConfig, save_user_config};
 use crate::api::{post_work_span, WorkSpanData};
-use tokio;
 
 
 // --- New CLI Argument Structure using clap ---
@@ -24,11 +21,13 @@ use tokio;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
+    // NOTE: The subcommand attribute tells clap to look at the Commands enum
     #[clap(subcommand)]
     command: Commands,
 }
 
-#[derive(Parser, Debug)]
+// CRITICAL FIX: The enum holding subcommands must derive `Subcommand`, not `Parser`.
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Runs the collector logic (default action).
     Run,
@@ -53,8 +52,6 @@ const LAST_DATE_FORMAT: &str = "%a %b %d %H:%M:%S %Y";
 
 /// Executes the 'last' command and parses raw output into structured session records.
 async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
-    //
-    // ... (Function body remains the same)
     println!("[INFO] Executing 'last -x -F reboot' to fetch logs...");
 
     let output = tokio::task::spawn_blocking(|| {
@@ -116,7 +113,6 @@ async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
 /// Calculates the Earliest Boot/Latest Shutdown span for each calendar day,
 /// and converts the data into the format required by the API (WorkSpanData).
 fn calculate_spans(sessions: Vec<SessionRecord>) -> Result<Vec<WorkSpanData>> {
-    // ... (Function body remains the same)
     // Key: NaiveDate | Value: (min_start, max_end)
     let mut daily_data: HashMap<chrono::NaiveDate, (DateTime<Local>, DateTime<Local>)> = HashMap::new();
 
@@ -136,7 +132,6 @@ fn calculate_spans(sessions: Vec<SessionRecord>) -> Result<Vec<WorkSpanData>> {
         }
 
         // 2. If the session crosses midnight, update the span for the end date as well.
-        // This handles sessions like 23:00 to 01:00
         if date != end_date {
             let end_entry = daily_data.entry(end_date)
                 .or_insert_with(|| (session.end_time, session.end_time));
@@ -184,8 +179,6 @@ fn filter_data_for_posting(
     mut historical_data: Vec<WorkSpanData>,
     user_config: &UserConfig,
 ) -> Vec<WorkSpanData> {
-    // ... (Function body remains the same)
-
     let last_posted_date = match user_config.last_posted_date.as_ref() {
         Some(date_str) => NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok(),
         None => None,
@@ -198,7 +191,7 @@ fn filter_data_for_posting(
 
     let filter_date = last_posted_date.unwrap();
 
-    // --- CHANGE 1: Use >= instead of > ---
+    // Use >= instead of >
     // This ensures we always re-post the last recorded day (the "Yesterday" data)
     // to finalize its shutdown time.
     historical_data.retain(|data| {
@@ -211,7 +204,6 @@ fn filter_data_for_posting(
             true
         }
     });
-    // --- END CHANGE 1 ---
 
     println!("[INFO] Filtering data to start from or after: {}.", filter_date);
 
@@ -225,7 +217,6 @@ fn filter_data_for_posting(
 
 /// Main entry point for the data collector logic: retrieves data and posts it asynchronously.
 async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserConfig) -> Result<()> {
-    // ... (Function body remains the same)
     let current_day_naive = Local::now().date_naive();
     println!("[INFO] Collector running on day: {}", current_day_naive.format("%Y-%m-%d"));
 
@@ -268,7 +259,7 @@ async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserC
                     }
                 };
 
-                // --- CHANGE 2: Conditional Config Update ---
+                // Conditional Config Update
                 // We only update the config date if the successfully posted data is NOT today.
                 // This ensures "Today" is re-posted tomorrow for finalization.
                 if posted_date_naive < current_day_naive {
@@ -276,7 +267,6 @@ async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserC
                 } else {
                     println!("[INFO] Posted data for today ({}). Will NOT update config to this date to ensure finalization tomorrow.", data.date);
                 }
-                // --- END CHANGE 2 ---
             },
             Err(e) => {
                 eprintln!("[ERROR] Failed to post data for date {}: {}. Aborting remaining posts.", data.date, e);
@@ -306,7 +296,7 @@ async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserC
     Ok(())
 }
 
-// --- Main Execution Block (MODIFIED) ---
+// --- Main Execution Block ---
 
 fn main() {
     // 1. Parse CLI Arguments
@@ -352,7 +342,7 @@ fn main() {
                 || user_config.user_id.is_none()
             {
                 eprintln!("\nFATAL: User tokens are missing. Please run the interactive setup command manually first:");
-                eprintln!("/opt/avadhi-collector/avadhi-collector --setup");
+                eprintln!("/opt/avadhi-collector/avadhi-collector setup"); // Updated command to use 'setup' subcommand
                 return;
             }
 
