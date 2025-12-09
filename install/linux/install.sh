@@ -1,11 +1,18 @@
 #!/bin/bash
 
 # --- Avadhi Collector Installation Script ---
-# ASSUMPTION: This script is executed from the temporary directory
-# where all assets (avadhi-collector, Config.toml.example, avadhi.service) reside.
 
 # Define the installation directory
 INSTALL_DIR="/opt/avadhi-collector"
+
+# IMPORTANT: Get the directory where THIS script is currently executing.
+SCRIPT_SOURCE_DIR=$(dirname "$0")
+
+# Determine the project root directory (two levels up from install/linux)
+SCRIPT_ROOT=$(dirname $(dirname "$SCRIPT_SOURCE_DIR"))
+
+# Get the original user who ran the script via sudo
+CALLING_USER=${SUDO_USER:-$(whoami)}
 
 echo "--- INSTALL SCRIPT PATHS CHECK ---"
 echo "Installation Directory: $INSTALL_DIR"
@@ -21,10 +28,9 @@ fi
 # --- Step 2: Copy Files ---
 echo "2. Copying files to $INSTALL_DIR"
 
-# 2a. CRITICAL: Copy the binary
+# 2a. Copy the binary
 BINARY_NAME="avadhi-collector"
 if [ -f "$BINARY_NAME" ]; then
-    # Binary is found in the current directory
     sudo cp -f "$BINARY_NAME" "$INSTALL_DIR/"
 else
     echo "FATAL ERROR: Collector binary ($BINARY_NAME) NOT found in the current directory. Check CI/CD packaging."
@@ -34,7 +40,6 @@ fi
 # 2b. Copy the config example
 CONFIG_EXAMPLE_NAME="Config.toml.example"
 if [ -f "$CONFIG_EXAMPLE_NAME" ]; then
-    # Config example is found in the current directory
     sudo cp -f "$CONFIG_EXAMPLE_NAME" "$INSTALL_DIR/"
 else
     echo "FATAL ERROR: Config example ($CONFIG_EXAMPLE_NAME) NOT found in the current directory. Check CI/CD packaging."
@@ -45,16 +50,18 @@ fi
 sudo cp -f "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
 echo "   Config.toml created successfully."
 
-# Set directory ownership to root AFTER copying is done
-sudo chown -R root:root "$INSTALL_DIR"
-echo "   Directory ownership set to root."
+# --- Step 2d: CRITICAL OWNERSHIP FIX ---
+# Change ownership of the installation directory to the calling user,
+# allowing them to write AvadhiConfig.toml later in the bootstrap script.
+sudo chown -R "$CALLING_USER":"$CALLING_USER" "$INSTALL_DIR"
+echo "   Directory ownership set to user $CALLING_USER."
+# Note: Removed the root:root setting from previous versions.
 
 
 # --- Step 3: Service Setup (Copy unit file) ---
 echo "3. Installing systemd service template..."
 SERVICE_UNIT_NAME="avadhi.service"
 if [ -f "$SERVICE_UNIT_NAME" ]; then
-    # Service unit is found in the current directory
     sudo cp -f "$SERVICE_UNIT_NAME" "/etc/systemd/system/avadhi@.service"
 else
     echo "FATAL ERROR: Service unit ($SERVICE_UNIT_NAME) NOT found in the current directory."
@@ -63,7 +70,6 @@ fi
 
 
 # --- Step 4: Enable Service Instance (DO NOT START) ---
-CALLING_USER=${SUDO_USER:-$(whoami)}
 SERVICE_INSTANCE="avadhi@$CALLING_USER.service"
 
 echo "4. Enabling service instance: $SERVICE_INSTANCE"
