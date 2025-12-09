@@ -20,11 +20,12 @@ echo "   Directory ownership set to root."
 
 # --- Step 2: Copy Files ---
 echo "2. Copying files to $INSTALL_DIR"
-# The files are relative to the location where the script was called from.
-# We use the SCRIPT_SOURCE_DIR to find them.
+# 2a. Copy the binary and the example config
 sudo cp "$SCRIPT_SOURCE_DIR/avadhi-collector" "$INSTALL_DIR/"
 sudo cp "$SCRIPT_SOURCE_DIR/Config.toml.example" "$INSTALL_DIR/"
-# Create the active config file with default values
+
+# 2b. CRITICAL FIX: Create the active config file from the example
+# The collector binary needs Config.toml to exist with the public Supabase URLs.
 sudo cp "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
 
 # --- Step 3: Service Setup ---
@@ -34,7 +35,6 @@ sudo cp "$SCRIPT_SOURCE_DIR/avadhi.service" "/etc/systemd/system/avadhi@.service
 
 # --- Step 4: Enable and Start Service Instance ---
 # Use the current calling user (who called sudo) as the service instance.
-# We get the USER environment variable, which holds the original user's name before sudo.
 CALLING_USER=${SUDO_USER:-$(whoami)}
 SERVICE_INSTANCE="avadhi@$CALLING_USER.service"
 
