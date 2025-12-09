@@ -8,9 +8,6 @@ INSTALL_DIR="/opt/avadhi-collector"
 # IMPORTANT: Get the directory where THIS script is currently executing.
 SCRIPT_SOURCE_DIR=$(dirname "$0")
 
-# Determine the project root directory (two levels up from install/linux)
-SCRIPT_ROOT=$(dirname $(dirname "$SCRIPT_SOURCE_DIR"))
-
 # Get the original user who ran the script via sudo
 CALLING_USER=${SUDO_USER:-$(whoami)}
 
@@ -50,12 +47,11 @@ fi
 sudo cp -f "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
 echo "   Config.toml created successfully."
 
-# --- Step 2d: CRITICAL OWNERSHIP FIX ---
+# --- Step 2d: CRITICAL OWNERSHIP FIX (Resolves Permission denied) ---
 # Change ownership of the installation directory to the calling user,
-# allowing them to write AvadhiConfig.toml later in the bootstrap script.
+# allowing them to write AvadhiConfig.toml later.
 sudo chown -R "$CALLING_USER":"$CALLING_USER" "$INSTALL_DIR"
 echo "   Directory ownership set to user $CALLING_USER."
-# Note: Removed the root:root setting from previous versions.
 
 
 # --- Step 3: Service Setup (Copy unit file) ---

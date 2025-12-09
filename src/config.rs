@@ -23,7 +23,7 @@ pub struct UserConfig {
 
     /// Field used by main.rs to prevent re-posting of historical data.
     /// Stores the date (YYYY-MM-DD) of the last successfully posted day.
-    pub last_posted_date: Option<String>, // Made pub for external modification
+    pub last_posted_date: Option<String>, // Correctly defined here
 }
 
 // --- File Handling Functions ---
@@ -92,7 +92,13 @@ pub fn save_user_config(user_config: &UserConfig) {
 
 
 /// Prompts the user for necessary credentials (User ID, Access/Refresh Tokens) and saves them.
-pub fn initial_setup_and_login(admin_config: &AdminConfig, user_config: &mut UserConfig) {
+/// Now accepts an optional initial_last_posted_date from the CLI.
+pub fn initial_setup_and_login(
+    admin_config: &AdminConfig,
+    user_config: &mut UserConfig,
+    // === NEW PARAMETER TO ACCEPT CLI DATE ===
+    initial_last_posted_date: Option<String>
+) {
     println!("\n--- Avadhi Collector User Setup Required ---");
 
     let login_url = admin_config.web_app_url.as_deref()
@@ -108,21 +114,32 @@ pub fn initial_setup_and_login(admin_config: &AdminConfig, user_config: &mut Use
     io::stdout().flush().unwrap();
     let mut user_id = String::new();
     io::stdin().read_line(&mut user_id).unwrap();
-    user_config.user_id = Some(user_id.trim().to_string());
+    let user_id = user_id.trim().to_string();
+
 
     // Prompt for Access Token
     print!("Enter Access Token (JWT): ");
     io::stdout().flush().unwrap();
     let mut access_token = String::new();
     io::stdin().read_line(&mut access_token).unwrap();
-    user_config.access_token = Some(access_token.trim().to_string());
+    let access_token = access_token.trim().to_string();
+
 
     // Prompt for Refresh Token
     print!("Enter Refresh Token: ");
     io::stdout().flush().unwrap();
     let mut refresh_token = String::new();
     io::stdin().read_line(&mut refresh_token).unwrap();
-    user_config.refresh_token = Some(refresh_token.trim().to_string());
+    let refresh_token = refresh_token.trim().to_string();
+
+    // === CRITICAL: Update the UserConfig struct with all collected data ===
+    *user_config = UserConfig {
+        user_id: Some(user_id),
+        access_token: Some(access_token),
+        refresh_token: Some(refresh_token),
+        // === SAVE THE DATE HERE ===
+        last_posted_date: initial_last_posted_date,
+    };
 
 
     save_user_config(user_config);

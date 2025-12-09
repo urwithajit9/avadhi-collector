@@ -4,28 +4,36 @@ Documentation=https://github.com/urwithajit9/avadhi-collector
 After=network.target
 
 [Service]
-# Type=simple is necessary for the initial setup to run and wait for tokens.
-Type=simple
-# The service runs as the user specified in the instance name (e.g., avadhi@ajit.service runs as user 'ajit').
+
+The service runs as the user specified in the instance name (e.g., avadhi@ajit.service runs as user 'ajit').
+
 User=%i
 Group=%i
 
-# Working directory is set to the user's home directory.
-# This ensures that configuration files created by the binary (like AvadhiConfig.toml)
-# land in a directory where the user (%i) has write permission.
-WorkingDirectory=/home/%i
+=== CRITICAL FIX: Working Directory (Resolves Config.toml not found in service) ===
 
-# Execute the binary from the fixed installation path
+Set the current working directory to the installation path, ensuring the binary can find
+
+Config.toml and AvadhiConfig.toml.
+
+WorkingDirectory=/opt/avadhi-collector
+
+Execute the binary from the fixed installation path
+
 ExecStart=/opt/avadhi-collector/avadhi-collector
 
-# Restart the service on failure for resilience
+Restart the service on failure for resilience
+
 Restart=always
 RestartSec=5s
 
-# Standard output and error logging
+Standard output and error logging
+
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-# This enables the service to be started when the system enters the multi-user state
+
+This enables the service to be started when the system enters the multi-user state
+
 WantedBy=multi-user.target

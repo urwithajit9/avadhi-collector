@@ -1,6 +1,10 @@
 mod config;
 mod api;
 
+// --- Add CLAP import for Command Line Argument Parsing ---
+use clap::Parser;
+// --- End CLAP import ---
+
 // --- Imports for Data Parsing and Time Calculations ---
 use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, NaiveDate};
 use std::{collections::HashMap, process::Command};
@@ -8,26 +12,49 @@ use regex::Regex;
 use anyhow::{anyhow, Result};
 // --- End Data Parsing Imports ---
 
+// NOTE: The signature for 'initial_setup_and_login' MUST be updated in config.rs
 use crate::config::{load_admin_config, load_user_config, initial_setup_and_login, AdminConfig, UserConfig, save_user_config};
 use crate::api::{post_work_span, WorkSpanData};
 use tokio;
 
 
-// --- Internal Data Structures & Constants ---
-/// Represents a single boot/shutdown record for aggregation.
+// --- New CLI Argument Structure using clap ---
+
+/// Avadhi Time Collector: Tracks system activity and posts work span data.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Parser, Debug)]
+enum Commands {
+    /// Runs the collector logic (default action).
+    Run,
+
+    /// Runs the interactive user token setup.
+    Setup {
+        /// Optional: Overrides historical log tracking by setting the last known posted date (YYYY-MM-DD).
+        #[clap(long, value_parser)]
+        last_posted_date: Option<String>,
+    },
+}
+
+// --- Internal Data Structures & Constants (UNCHANGED) ---
 #[derive(Debug, Clone)]
 struct SessionRecord {
     start_time: DateTime<Local>,
     end_time: DateTime<Local>,
 }
-
-/// Constant for parsing the output format of the 'last' command
 const LAST_DATE_FORMAT: &str = "%a %b %d %H:%M:%S %Y";
 
 // --- Data Parsing Functions (UNCHANGED) ---
 
 /// Executes the 'last' command and parses raw output into structured session records.
 async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
+    //
+    // ... (Function body remains the same)
     println!("[INFO] Executing 'last -x -F reboot' to fetch logs...");
 
     let output = tokio::task::spawn_blocking(|| {
@@ -89,7 +116,7 @@ async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
 /// Calculates the Earliest Boot/Latest Shutdown span for each calendar day,
 /// and converts the data into the format required by the API (WorkSpanData).
 fn calculate_spans(sessions: Vec<SessionRecord>) -> Result<Vec<WorkSpanData>> {
-
+    // ... (Function body remains the same)
     // Key: NaiveDate | Value: (min_start, max_end)
     let mut daily_data: HashMap<chrono::NaiveDate, (DateTime<Local>, DateTime<Local>)> = HashMap::new();
 
@@ -157,6 +184,7 @@ fn filter_data_for_posting(
     mut historical_data: Vec<WorkSpanData>,
     user_config: &UserConfig,
 ) -> Vec<WorkSpanData> {
+    // ... (Function body remains the same)
 
     let last_posted_date = match user_config.last_posted_date.as_ref() {
         Some(date_str) => NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok(),
@@ -197,7 +225,7 @@ fn filter_data_for_posting(
 
 /// Main entry point for the data collector logic: retrieves data and posts it asynchronously.
 async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserConfig) -> Result<()> {
-
+    // ... (Function body remains the same)
     let current_day_naive = Local::now().date_naive();
     println!("[INFO] Collector running on day: {}", current_day_naive.format("%Y-%m-%d"));
 
@@ -278,13 +306,16 @@ async fn run_collector_logic(admin_config: &AdminConfig, user_config: &mut UserC
     Ok(())
 }
 
-// --- Main Execution Block (UNCHANGED) ---
+// --- Main Execution Block (MODIFIED) ---
 
 fn main() {
-    // 1. Load static Admin Configuration
+    // 1. Parse CLI Arguments
+    let cli = Cli::parse();
+
+    // 2. Load static Admin Configuration (needed for setup and run)
     let admin_config = load_admin_config();
 
-    // 2. Critical check: Ensure AdminConfig has essential values (URL and Key)
+    // 3. Critical check: Ensure AdminConfig has essential values (URL and Key)
     if admin_config.supabase_url.is_none()
         || admin_config.supabase_anon_key.is_none()
         || admin_config.web_app_url.is_none()
@@ -293,34 +324,47 @@ fn main() {
         return;
     }
 
-    // 3. Load dynamic User Configuration
-    let mut user_config = load_user_config();
 
-    // 4. Check for user token requirement and run interactive setup if tokens are missing.
-    if user_config.access_token.is_none()
-        || user_config.refresh_token.is_none()
-        || user_config.user_id.is_none()
-    {
-        println!("User configuration missing required fields. Running initial user setup.");
-        initial_setup_and_login(&admin_config, &mut user_config);
+    match cli.command {
+        Commands::Setup { last_posted_date } => {
+            // --- SETUP MODE ---
+            // Load a dummy user config to pass its mutable reference,
+            // the setup function will overwrite it.
+            let mut user_config = load_user_config();
+
+            println!("Running initial user setup.");
+
+            // CRITICAL: Call the setup function with the optional date argument
+            initial_setup_and_login(&admin_config, &mut user_config, last_posted_date);
+
+            // Setup is complete, exit gracefully. The bootstrap script will restart the service.
+            println!("Setup finished successfully. Ready to run the collector service.");
+        },
+
+        Commands::Run => {
+            // --- RUN MODE (Default Service Behavior) ---
+
+            let mut user_config = load_user_config();
+
+            // Check for user token requirement. If missing, it's a fatal error in run mode.
+            if user_config.access_token.is_none()
+                || user_config.refresh_token.is_none()
+                || user_config.user_id.is_none()
+            {
+                eprintln!("\nFATAL: User tokens are missing. Please run the interactive setup command manually first:");
+                eprintln!("/opt/avadhi-collector/avadhi-collector --setup");
+                return;
+            }
+
+            // 6. Start the main runtime loop
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            // Pass both configs to the collector logic
+            runtime.block_on(run_collector_logic(&admin_config, &mut user_config))
+                .expect("Collector runtime failed unexpectedly.");
+        }
     }
-
-    // 5. Final check: Ensure user tokens are now present after setup attempt.
-    if user_config.access_token.is_none()
-        || user_config.refresh_token.is_none()
-        || user_config.user_id.is_none()
-    {
-        eprintln!("\nFATAL: User authentication failed. Access, Refresh tokens, or User ID are still missing. Exiting.");
-        return;
-    }
-
-    // 6. Start the main runtime loop
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-    // Pass both configs to the collector logic
-    runtime.block_on(run_collector_logic(&admin_config, &mut user_config))
-        .expect("Collector runtime failed unexpectedly.");
 }
