@@ -25,7 +25,7 @@ sudo cp "$SCRIPT_SOURCE_DIR/avadhi-collector" "$INSTALL_DIR/"
 sudo cp "$SCRIPT_SOURCE_DIR/Config.toml.example" "$INSTALL_DIR/"
 
 # 2b. CRITICAL FIX: Create the active config file from the example
-# The collector binary needs Config.toml to exist with the public Supabase URLs.
+# This file contains the Supabase URLs needed for the --setup step.
 sudo cp "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
 
 # --- Step 3: Service Setup ---
@@ -33,16 +33,15 @@ echo "3. Installing systemd service template..."
 # Copy the service template to the systemd directory
 sudo cp "$SCRIPT_SOURCE_DIR/avadhi.service" "/etc/systemd/system/avadhi@.service"
 
-# --- Step 4: Enable and Start Service Instance ---
-# Use the current calling user (who called sudo) as the service instance.
+# --- Step 4: Enable Service Instance (DO NOT START HERE) ---
+# We enable the service but do not start it yet to avoid the "Text file busy" error.
 CALLING_USER=${SUDO_USER:-$(whoami)}
 SERVICE_INSTANCE="avadhi@$CALLING_USER.service"
 
-echo "4. Enabling and starting service instance: $SERVICE_INSTANCE"
+echo "4. Enabling service instance: $SERVICE_INSTANCE"
 sudo systemctl daemon-reload # Reload unit files to recognize the new template
 sudo systemctl enable "$SERVICE_INSTANCE"
-# Starting here will make it fail (due to missing tokens), but it registers the service.
-sudo systemctl start "$SERVICE_INSTANCE"
+# REMOVED: sudo systemctl start "$SERVICE_INSTANCE"
 
 # --- Step 5: Completion Message ---
 echo "--------------------------------------------------------"
