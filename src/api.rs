@@ -103,7 +103,9 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
             Some(token) => token,
             None => {
                 eprintln!("Access token missing. Cannot proceed with posting data. Running initial user setup.");
-                initial_setup_and_login(admin_config, user_config);
+                // === FIX 1: Pass None for the date when tokens are missing ===
+                initial_setup_and_login(admin_config, user_config, None);
+                // ============================================================
                 if user_config.access_token.is_none() {
                     return Err(anyhow!("Authentication failed and tokens are still missing after setup."));
                 }
@@ -115,7 +117,9 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
             Some(id) => id,
             None => {
                 eprintln!("User ID missing in config. Running initial user setup to collect User ID.");
-                initial_setup_and_login(admin_config, user_config);
+                // === FIX 2: Pass None for the date when User ID is missing ===
+                initial_setup_and_login(admin_config, user_config, None);
+                // ============================================================
                 continue;
             }
         };
@@ -207,7 +211,9 @@ pub async fn post_work_span(data: WorkSpanData, admin_config: &AdminConfig, user
                         eprintln!("Automatic token refresh failed: {}. Attempting manual re-authentication.", e);
 
                         // Only run manual setup if the auto-refresh failed.
-                        initial_setup_and_login(admin_config, user_config);
+                        // === FIX 3: Pass None for the date during manual re-authentication ===
+                        initial_setup_and_login(admin_config, user_config, None);
+                        // ===================================================================
 
                         if user_config.access_token.is_some() {
                             println!("Manual re-authentication succeeded. Retrying...");
