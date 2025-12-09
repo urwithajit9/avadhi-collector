@@ -11,19 +11,16 @@ TEMP_DIR=$(mktemp -d)
 CURRENT_USER=$(whoami)
 SERVICE_INSTANCE="avadhi@$CURRENT_USER.service"
 INSTALL_DIR="/opt/avadhi-collector"
+FINAL_BINARY="$INSTALL_DIR/avadhi-collector"
+WEB_APP_URL="https://www.avadhi.space/auth"
 
 echo "--- Starting Avadhi Collector Quick Install ---"
 
-# --- 0. Pre-Installation Cleanup (Guaranteed Stop/Disable) ---
-# Ensures the environment is clean before starting the install.
+# --- 0. Pre-Installation Cleanup ---
 echo "0. Running pre-installation cleanup..."
-# Stop the service instance if it exists
 sudo systemctl stop "$SERVICE_INSTANCE" 2>/dev/null || true
-# Disable the service instance
 sudo systemctl disable "$SERVICE_INSTANCE" 2>/dev/null || true
-# Reload systemd configuration
 sudo systemctl daemon-reload 2>/dev/null || true
-# Remove the entire installation directory
 sudo rm -rf "$INSTALL_DIR" 2>/dev/null || true
 
 
@@ -43,50 +40,48 @@ if ! tar -xzf "$TEMP_DIR/$ASSET_NAME" -C "$TEMP_DIR"; then
 fi
 
 EXTRACTED_DIR="$TEMP_DIR/avadhi-linux"
-FINAL_BINARY="$INSTALL_DIR/avadhi-collector"
-WEB_APP_URL="https://www.avadhi.space/auth"
 
-# --- 2. Run the Main Installation Script (CRITICAL FIX: Execution Context) ---
-# Fix: Change directory to the extracted folder before executing install.sh.
-# This ensures that install.sh's commands (cp avadhi-collector) find the files locally (./).
+# --- 2. Run the Main Installation Script (File Copying & Permissions) ---
 echo "3. Executing main installation script (requires sudo for /opt permissions)..."
 
+# CRITICAL FIX: Change directory to the extracted folder before executing install.sh.
 if ! (cd "$EXTRACTED_DIR" && sudo bash install.sh); then
     echo "FATAL: Main installation script failed."
     rm -rf "$TEMP_DIR"
     exit 1
 fi
 
-# --- 3. Mandatory User Authentication (Interactive Setup) ---
+# --- 3. Final Completion Message (Decoupled Setup Instructions) ---
+
 echo "--------------------------------------------------------"
-echo "--- MANDATORY: Initial User Setup ---"
-echo "The service requires your private tokens to run."
-echo "Please visit the URL below to retrieve your User ID and Tokens:"
-echo "$WEB_APP_URL"
+echo "✅ CORE INSTALLATION COMPLETE."
+echo "--------------------------------------------------------"
+echo ""
+echo "🔥 NEXT MANDATORY STEP: INTERACTIVE SETUP 🔥"
+echo ""
+echo "The Collector requires your user-specific tokens."
+echo "Please perform the following steps:"
+echo ""
+echo "Step A: Get Tokens:"
+echo "   1. Visit the following URL to log in and get your credentials:"
+echo "      $WEB_APP_URL"
+echo ""
+echo "Step B: Run Setup Command:"
+echo "   2. Run the command below to launch the interactive prompt and save your tokens:"
+echo ""
+echo "      cd $INSTALL_DIR && $FINAL_BINARY --setup"
+echo ""
+echo "   This ensures the binary is running from the correct directory to find Config.toml."
+echo ""
+echo "Step C: Start Service:"
+echo "   3. After setup is complete, run the command below to start the collector service:"
+echo ""
+echo "      sudo systemctl restart $SERVICE_INSTANCE"
+echo ""
 echo "--------------------------------------------------------"
 
-# Run setup binary (as the user, not sudo)
-echo "4. Starting interactive setup. Please enter your tokens below."
 
-# Fix: Use 'cd $INSTALL_DIR' inside runuser command. This sets the working directory
-# to /opt/avadhi-collector, allowing the binary to find Config.toml in the same location.
-SETUP_COMMAND="cd $INSTALL_DIR && $FINAL_BINARY --setup"
-
-if ! sudo runuser -l "$CURRENT_USER" -c "$SETUP_COMMAND"; then
-    echo "ERROR: Interactive token setup failed or was interrupted. Please check logs for configuration errors."
-    # The installation is technically complete, but the setup failed. Proceed to cleanup.
-else
-    # --- 4. Final Service Activation ---
-    echo ""
-    echo "5. Tokens saved! Restarting $SERVICE_INSTANCE for persistent tracking."
-    sudo systemctl restart "$SERVICE_INSTANCE"
-    echo "--------------------------------------------------------"
-    echo "✅ INSTALLATION COMPLETE."
-    echo "The Avadhi Collector is now running in the background."
-    echo "--------------------------------------------------------"
-fi
-
-# --- 5. Cleanup ---
-echo "6. Cleaning up temporary files..."
+# --- 4. Cleanup ---
+echo "4. Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
-echo "Cleanup finished. Check status with: sudo systemctl status $SERVICE_INSTANCE"
+echo "Cleanup finished. Installation directory is $INSTALL_DIR"
