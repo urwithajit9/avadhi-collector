@@ -4,38 +4,28 @@ Documentation=https://github.com/urwithajit9/avadhi-collector
 After=network.target
 
 [Service]
-
-Type=simple is default
-
+# Type=simple is necessary for the initial setup to run and wait for tokens.
 Type=simple
-
-%i is replaced by the instance name passed to the service (i.e., the username)
-
-This ensures the collector runs with the privileges of the user who installed it.
-
+# The service runs as the user specified in the instance name (e.g., avadhi@ajit.service runs as user 'ajit').
 User=%i
 Group=%i
 
-Set the location where the binary and Config.toml reside
+# Working directory is set to the user's home directory.
+# This ensures that configuration files created by the binary (like AvadhiConfig.toml)
+# land in a directory where the user (%i) has write permission.
+WorkingDirectory=/home/%i
 
-WorkingDirectory=/opt/avadhi-collector
-
-The executable path
-
+# Execute the binary from the fixed installation path
 ExecStart=/opt/avadhi-collector/avadhi-collector
 
-Restart policy: Always restart the service if it stops unexpectedly
-
+# Restart the service on failure for resilience
 Restart=always
-RestartSec=5
+RestartSec=5s
 
-Send logs to the systemd journal
-
+# Standard output and error logging
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-
-Enabled by default for multi-user mode
-
+# This enables the service to be started when the system enters the multi-user state
 WantedBy=multi-user.target
