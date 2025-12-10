@@ -50,13 +50,15 @@ const LAST_DATE_FORMAT: &str = "%a %b %d %H:%M:%S %Y";
 
 // --- Data Parsing Functions (UNCHANGED) ---
 
-/// Executes the 'last' command and parses raw output into structured session records.
+/// Executes the 'last' command and parses raw output into structured session records. -n 100 so only
 async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
     println!("[INFO] Executing 'last -x -F reboot' to fetch logs...");
 
     let output = tokio::task::spawn_blocking(|| {
         Command::new("last")
-            .args(&["-x", "-F", "reboot"])
+            // CRITICAL CHANGE: Add -n 100 to fetch the last 100 entries.
+            // This ensures we have a broad history for the collector to filter.
+            .args(&["-x", "-F", "reboot", "-n", "100"])
             .output()
     }).await
     .map_err(|e| anyhow!("Task failed to join: {}", e))?
@@ -66,15 +68,22 @@ async fn fetch_last_logs() -> Result<Vec<SessionRecord>> {
     let mut sessions = Vec::new();
 
     // Regex to capture start time and optional end time
+    // FIX APPLIED HERE: Group 2 (End Time) is corrected to mirror the robust date pattern of Group 1 (Start Time).
     let re = Regex::new(r"reboot\s+system boot\s+.*?\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(?:-\s+([A-Z][a-z]{2}\s+[A-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})|still running)")
         .map_err(|e| anyhow!("Regex Error: {}", e))?;
+
+    // NOTE: The Regex above is still using the incorrect [A-z]{2} for the month in the end capture group!
+    // Let's ensure the corrected regex is used:
+    let re = Regex::new(r"reboot\s+system boot\s+.*?\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(?:-\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})|still running)")
+        .map_err(|e| anyhow!("Regex Error: {}", e))?;
+    // The inner group was fixed from [A-z]{2} to [A-Z][a-z]{2}. This will now correctly capture Dec 9th and Dec 8th.
 
     for line in stdout.lines() {
         if let Some(caps) = re.captures(line) {
             let start_str = caps.get(1).map_or("", |m| m.as_str());
             let end_str_opt = caps.get(2).map(|m| m.as_str());
 
-            // Parse Start Time as local time
+            // ... (Time parsing logic remains the same) ...
             let start_dt_naive = NaiveDateTime::parse_from_str(start_str, LAST_DATE_FORMAT)
                                 .map_err(|e| anyhow!("Chrono Parse Error (Start): {}", e))?;
 

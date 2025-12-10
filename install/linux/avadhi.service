@@ -1,39 +1,29 @@
 [Unit]
-Description=Avadhi Time Collector Service
+Description=Avadhi Time Collector Service for User %i
 Documentation=https://github.com/urwithajit9/avadhi-collector
-After=network.target
+# Require network connectivity before attempting to start
+Requires=network-online.target
+After=network-online.target
 
 [Service]
+# Service Type: 'oneshot' is correct for a script that runs, posts data, and exits.
+Type=oneshot
 
-The service runs as the user specified in the instance name (e.g., avadhi@ajit.service runs as user 'ajit').
-
+# IMPORTANT: Run the service as the user specified in the instance name (e.g., 'ajit')
+# This is crucial so it can read/write its own AvadhiConfig.toml.
 User=%i
-Group=%i
 
-=== CRITICAL FIX: Working Directory (Resolves Config.toml not found in service) ===
-
-Set the current working directory to the installation path, ensuring the binary can find
-
-Config.toml and AvadhiConfig.toml.
-
+# Set the working directory to where the executable and config files are located.
 WorkingDirectory=/opt/avadhi-collector
 
-Execute the binary from the fixed installation path
+# The command to execute: use the 'run' subcommand, as determined by your testing.
+ExecStart=/opt/avadhi-collector/avadhi-collector run
 
-ExecStart=/opt/avadhi-collector/avadhi-collector
-
-Restart the service on failure for resilience
-
-Restart=always
-RestartSec=5s
-
-Standard output and error logging
-
+# Optional: Configuration for logging
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-
-This enables the service to be started when the system enters the multi-user state
-
+# The service should be started when the system is fully operational.
+# For user-specific services, you might prefer multi-user.target or a timer.
 WantedBy=multi-user.target
