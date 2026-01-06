@@ -1,163 +1,199 @@
-# 🕒 Avadhi Time Collector - Linux Installation Guide
+# 🕒 Avadhi Time Collector – Linux Installation Guide
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange)](https://www.rust-lang.org/)
 
-The **Avadhi Time Collector** is a lightweight Rust application that runs as a persistent background service on Linux. It reads your system's boot/shutdown logs (`wtmp`) to calculate daily work spans and posts the data to the [Avadhi Time Tracker web app](https://www.avadhi.space/).
+The **Avadhi Time Collector** is a lightweight Rust application that runs as a **scheduled system service** on Linux. It reads system boot/shutdown logs (`wtmp`) to calculate daily work spans and posts them to the
+[Avadhi Time Tracker](https://www.avadhi.space/).
+
+The collector is designed to:
+
+* Run **once per day**
+* Execute during **working hours (10:00 local time)**
+* Recover automatically if the system was powered off
+* Require **no background daemon**
+* Be robust across shutdowns, weekends, and holidays
+
+---
+
+## 🚀 One-Line Installation (Recommended)
 
 ```bash
-
 curl -fsSL https://avadhi.space/install.sh | bash
+```
 
-curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/scripts/install-bootstrap.sh | bash
+This command:
 
-````
-### The Benefits
+* Downloads the latest release
+* Installs the collector into `/opt/avadhi-collector`
+* Installs a **systemd service + timer**
+* Enables the timer (not the service directly)
 
-1.  **Simplicity:** Users only have to copy and paste one line into their terminal.
-2.  **Automation:** The script handles download, extraction, and running the installer.
-3.  **Correct Permissions:** By running the bootstrap script via `bash`, we can control when and how `sudo` is called to run the `install.sh` script, ensuring the correct file permissions and service setup.
-
-This is the recommended and professional way to distribute Linux software. You should update your website's instructions to use this single-line command.
-
-This guide shows how to **install and configure the collector using Systemd**.
+This is the **recommended and professional** distribution method.
 
 ---
 
 ## 📋 Prerequisites
 
-- Linux distribution with **Systemd** (Ubuntu, Debian, Fedora, Arch, etc.)
-- Active user account on [Avadhi Time Tracker](https://www.avadhi.space/)
-- Basic terminal knowledge and `sudo` privileges
+* Linux distribution using **systemd**
+* Internet connectivity
+* `sudo` access
+* Active account on [https://www.avadhi.space](https://www.avadhi.space)
 
 ---
 
-## 🚀 Installation Steps
+## 📁 Installation Layout
 
-The installation is divided into **three phases**: preparation, service installation, and user authentication.
+All runtime files are kept together:
 
----
-
-### Phase 1: Preparation (Download & Extract)
-
-1. **Download** the latest `avadhi-linux.tar.gz` from the GitHub Releases page.
-2. **Extract** the archive:
-
-```bash
-# Move to your home directory and extract
-cd ~
-tar -xzvf path/to/avadhi-linux.tar.gz
-
-# Navigate to the extracted folder
-cd avadhi-linux
-````
-
----
-
-### Phase 2: Service Installation
-
-The package includes an `install.sh` script to automate setup and install the Systemd service.
-
-1. **Optional**: Review configuration in `Config.toml`.
-
-   * Preconfigured for `https://www.avadhi.space/`.
-   * Edit only if using a custom backend.
-
-2. **Run the Installer**:
-
-```bash
-# Make script executable
-chmod +x install.sh
-
-# Run the installer with sudo
-sudo ./install.sh
+```text
+/opt/avadhi-collector/
+├── avadhi-collector        # Rust binary
+├── Config.toml             # Static backend configuration
+├── AvadhiConfig.toml       # User tokens (created during setup)
 ```
 
-> The installer creates a service instance named:
->
-> ```text
-> avadhi@yourusername.service
-> ```
+Systemd units are installed to:
+
+```text
+/etc/systemd/system/
+├── avadhi-collector.service
+├── avadhi-collector.timer
+```
 
 ---
 
-### Phase 3: Mandatory User Authentication
+## 🔐 Mandatory One-Time Authentication
 
-The service starts automatically after installation but will **not post data** until you provide your credentials.
+The collector **cannot run** until user credentials are provided.
 
-1. **Run the Collector Manually** (as your standard user, **not sudo**):
+### Step 1: Run setup interactively (once)
 
 ```bash
 cd /opt/avadhi-collector
-./avadhi-collector
+./avadhi-collector setup
 ```
 
-2. **Authenticate**:
+This will:
 
-* Visit [https://www.avadhi.space/auth](https://www.avadhi.space/auth)
-* Retrieve your **User ID (UUID)**, **Access Token (JWT)**, and **Refresh Token**
-* Paste the credentials in the terminal prompt
+* Open the browser to the login page
+* Prompt for:
 
-> Once saved, the collector exits automatically.
+  * User ID (UUID)
+  * Access Token
+  * Refresh Token
+* Create `AvadhiConfig.toml`
+
+> Run this command as your **normal user**, not with `sudo`.
 
 ---
 
-### Final Step: Start the Persistent Service
+## ⏰ How Execution Works (Important)
 
-Restart the service to enable background collection:
+* The collector **does not run continuously**
+* It is triggered by a **systemd timer**
+* Runs **once per day at ~10:00 local time**
+* If the system is powered off at 10:00:
+
+  * It runs once on the **next boot**
+* Weekends are **included**
+* Missed days are **not backfilled**
+
+This matches the intended data model:
+
+> “Finalize yesterday’s work span during the next working window.”
+
+---
+
+## 🔎 Verification (Required)
+
+### 1. Verify timer is enabled
 
 ```bash
-# Identify your service instance
-SERVICE_INSTANCE="avadhi@$(whoami).service"
-echo "Service Name: $SERVICE_INSTANCE"
+systemctl status avadhi-collector.timer
+```
 
-# Restart service
-sudo systemctl restart $SERVICE_INSTANCE
+Expected:
 
-# Verify status
-sudo systemctl status $SERVICE_INSTANCE
+```text
+Loaded: loaded
+Active: active (waiting)
+```
+
+### 2. Verify next scheduled run
+
+```bash
+systemctl list-timers | grep avadhi
+```
+
+Expected output includes:
+
+* NEXT run time
+* LAST run time (after first execution)
+
+### 3. Verify service execution logs
+
+```bash
+journalctl -u avadhi-collector.service --since today
 ```
 
 You should see:
 
-```
-Active: active (running)
-```
+* Successful startup
+* API POST confirmation
+* Clean exit (oneshot)
 
 ---
 
-## 🛠 Troubleshooting & Logs
+## 🛠 Troubleshooting
 
-View real-time logs:
+### Tokens expired / unauthorized (401)
 
-```bash
-sudo journalctl -u avadhi@$(whoami).service -f -n 50
+Symptom:
+
+```text
+API Error: Token unauthorized or expired (401)
 ```
 
-<details>
-<summary>⚠️ Common Error: Token unauthorized / expired (401)</summary>
+Fix:
 
-If you see `API Error: Token unauthorized or expired (401)`, the service is running but the tokens are invalid.
+```bash
+cd /opt/avadhi-collector
+./avadhi-collector setup
+```
 
-**Solution**: Re-run the **manual authentication step (Phase 3)** to refresh your credentials.
+Then wait for the next scheduled timer run
+(or trigger manually for testing):
 
-</details>
+```bash
+sudo systemctl start avadhi-collector.service
+```
 
 ---
 
 ## 📌 Notes
 
-* The service runs **per user**, so multiple users need separate instances.
-* Configurations are stored in `/opt/avadhi-collector/AvadhiConfig.toml`.
-* Designed for **long-term, continuous monitoring** of system work spans.
+* The service is **timer-driven**, not long-running
+* Configuration remains in `/opt/avadhi-collector`
+* Safe to install on laptops, desktops, or servers
+* Future versions may support always-on systems via sleep-based logic
 
 ---
 
-## 🔗 Useful Links
+## 🔗 Links
 
-* [Avadhi Web App](https://www.avadhi.space/)
-* [GitHub Releases](https://github.com/your-repo/avadhi-time-collector/releases)
+* 🌐 Web App: [https://www.avadhi.space/](https://www.avadhi.space/)
+* 📦 Releases: [https://github.com/urwithajit9/avadhi-collector/releases](https://github.com/urwithajit9/avadhi-collector/releases)
+* 📘 Documentation: [https://github.com/urwithajit9/avadhi-collector](https://github.com/urwithajit9/avadhi-collector)
 
+---
 
+### Final status
+
+* ✔ Timer-based execution
+* ✔ Weekend-safe
+* ✔ Non-interactive service
+* ✔ Clear verification path
+* ✔ Production-grade install flow
 
 

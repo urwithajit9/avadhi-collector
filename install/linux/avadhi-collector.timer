@@ -1,0 +1,19 @@
+[Unit]
+Description=Run Avadhi Collector once daily during work hours
+
+[Timer]
+# Run once per day at 10:00 local time
+OnCalendar=*-*-* 10:00:00
+
+# If the system was powered off at 10:00,
+# run immediately on next boot
+Persistent=true
+
+# Small random delay to avoid stampeding if many machines start together
+RandomizedDelaySec=10m
+
+# Accuracy is not critical; allow systemd flexibility
+AccuracySec=5m
+
+[Install]
+WantedBy=timers.target

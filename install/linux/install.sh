@@ -5,16 +5,30 @@
 # Define the installation directory
 INSTALL_DIR="/opt/avadhi-collector"
 
+# Dedicated system user for the collector
+SERVICE_USER="avadhi"
+
 # IMPORTANT: Get the directory where THIS script is currently executing.
 SCRIPT_SOURCE_DIR=$(dirname "$0")
 
-# Get the original user who ran the script via sudo
-CALLING_USER=${SUDO_USER:-$(whoami)}
-
 echo "--- INSTALL SCRIPT PATHS CHECK ---"
 echo "Installation Directory: $INSTALL_DIR"
-echo "Checking for local assets: avadhi-collector, Config.toml.example, avadhi.service"
+echo "Service User: $SERVICE_USER"
+echo "Checking for local assets: avadhi-collector, Config.toml.example, avadhi-collector.service, avadhi-collector.timer"
 echo "----------------------------------"
+
+# --- Step 0: Ensure system user exists ---
+echo "0. Ensuring system user '$SERVICE_USER' exists..."
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+    sudo useradd \
+        --system \
+        --home "$INSTALL_DIR" \
+        --shell /usr/sbin/nologin \
+        "$SERVICE_USER"
+    echo "   System user '$SERVICE_USER' created."
+else
+    echo "   System user '$SERVICE_USER' already exists."
+fi
 
 # --- Step 1: Directory Setup ---
 echo "1. Setting up installation directory: $INSTALL_DIR"
@@ -43,38 +57,50 @@ else
     exit 1
 fi
 
-# 2c. Create the active config file from the example
-sudo cp -f "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
-echo "   Config.toml created successfully."
-
-# --- Step 2d: CRITICAL OWNERSHIP FIX (Resolves Permission denied) ---
-# Change ownership of the installation directory to the calling user,
-# allowing them to write AvadhiConfig.toml later.
-sudo chown -R "$CALLING_USER":"$CALLING_USER" "$INSTALL_DIR"
-echo "   Directory ownership set to user $CALLING_USER."
-
-
-# --- Step 3: Service Setup (Copy unit file) ---
-echo "3. Installing systemd service template..."
-SERVICE_UNIT_NAME="avadhi.service"
-if [ -f "$SERVICE_UNIT_NAME" ]; then
-    sudo cp -f "$SERVICE_UNIT_NAME" "/etc/systemd/system/avadhi@.service"
+# 2c. Create the active config file from the example (do not overwrite if exists)
+if [ ! -f "$INSTALL_DIR/Config.toml" ]; then
+    sudo cp "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
+    echo "   Config.toml created successfully."
 else
-    echo "FATAL ERROR: Service unit ($SERVICE_UNIT_NAME) NOT found in the current directory."
+    echo "   Config.toml already exists. Skipping."
+fi
+
+# --- Step 2d: Ownership ---
+echo "   Setting ownership to $SERVICE_USER"
+sudo chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
+
+# --- Step 3: Install systemd units ---
+echo "3. Installing systemd units..."
+
+SERVICE_UNIT_NAME="avadhi-collector.service"
+TIMER_UNIT_NAME="avadhi-collector.timer"
+
+if [ -f "$SERVICE_UNIT_NAME" ]; then
+    sudo cp -f "$SERVICE_UNIT_NAME" "/etc/systemd/system/$SERVICE_UNIT_NAME"
+else
+    echo "FATAL ERROR: Service unit ($SERVICE_UNIT_NAME) NOT found."
     exit 1
 fi
 
+if [ -f "$TIMER_UNIT_NAME" ]; then
+    sudo cp -f "$TIMER_UNIT_NAME" "/etc/systemd/system/$TIMER_UNIT_NAME"
+else
+    echo "FATAL ERROR: Timer unit ($TIMER_UNIT_NAME) NOT found."
+    exit 1
+fi
 
-# --- Step 4: Enable Service Instance (DO NOT START) ---
-SERVICE_INSTANCE="avadhi@$CALLING_USER.service"
-
-echo "4. Enabling service instance: $SERVICE_INSTANCE"
-sudo systemctl daemon-reload # Reload unit files to recognize the new template
-sudo systemctl enable "$SERVICE_INSTANCE"
+# --- Step 4: Enable timer ONLY ---
+echo "4. Enabling daily timer (service will be triggered by timer)..."
+sudo systemctl daemon-reload
+sudo systemctl enable "$TIMER_UNIT_NAME"
 
 # --- Step 5: Completion Message ---
 echo "--------------------------------------------------------"
-echo "✅ Installation Complete."
+echo "✅ Installation Complete (Timer-based mode)"
 echo "--------------------------------------------------------"
-echo "NEXT STEPS (MANDATORY): Run the interactive setup to provide tokens."
+echo "NEXT STEPS:"
+echo "1. Ensure AvadhiConfig.toml exists in $INSTALL_DIR"
+echo "2. Tokens must be provisioned non-interactively (Option 1)"
+echo "3. Verify timer:"
+echo "     systemctl list-timers | grep avadhi"
 echo "--------------------------------------------------------"

@@ -3,14 +3,14 @@ name: Release Avadhi Collector
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+' # Trigger on version tags like v1.0.0
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   build-linux:
     name: Build Linux Binary and Package
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required for softprops/action-gh-release
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -21,37 +21,37 @@ jobs:
         with:
           toolchain: stable
 
-      # 2. Build the Linux binary (Release mode)
+      # 2. Build the Linux binary
       - name: Build Release Binary
         run: cargo build --release
 
-      # 3. Create the Distribution Directory and Copy Assets
+      # 3. Create distribution directory
       - name: Setup Packaging Directory
         run: |
-          # Create the folder that will be archived
           mkdir avadhi-linux
 
-          # Copy the compiled binary
+          # Binary
           cp target/release/avadhi-collector avadhi-linux/
 
-          # Copy the Admin Configuration template
+          # Config template
           cp Config.toml.example avadhi-linux/
 
-          # Copy the installation script
+          # Installer
           cp install/linux/install.sh avadhi-linux/
 
-          # Copy the Systemd service template
-          cp install/linux/avadhi.service avadhi-linux/
+          # Systemd units (NEW)
+          cp install/linux/avadhi-collector.service avadhi-linux/
+          cp install/linux/avadhi-collector.timer avadhi-linux/
 
-      # 4. Create the final compressed archive (tarball)
+      # 4. Create tarball
       - name: Archive Release Assets
         run: tar -czvf avadhi-linux.tar.gz avadhi-linux
 
-      # 5. Create GitHub Release and Upload Assets
+      # 5. Publish GitHub Release
       - name: Create GitHub Release and Upload
         uses: softprops/action-gh-release@v2
         with:
           files: avadhi-linux.tar.gz
-          body_path: README.md # Use the README as the release description
+          body_path: README.md
           overwrite_files: true
           token: ${{ secrets.GITHUB_TOKEN }}
