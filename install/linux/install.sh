@@ -47,6 +47,12 @@ sudo cp -f "$SCRIPT_SOURCE_DIR/Config.toml.example" "$INSTALL_DIR/"
 
 [ ! -f "$INSTALL_DIR/Config.toml" ] && sudo cp "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml" && echo "   Config.toml created." || echo "   Config.toml already exists. Skipping."
 
+# Copy uninstall script
+if [ -f "$SCRIPT_SOURCE_DIR/uninstall.sh" ]; then
+    sudo cp -f "$SCRIPT_SOURCE_DIR/uninstall.sh" "$INSTALL_DIR/"
+fi
+
+
 # ---------------- Step 3: Ownership ----------------
 echo "3. Setting ownership to $SERVICE_USER"
 sudo chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
