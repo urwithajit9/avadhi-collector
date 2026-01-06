@@ -3,7 +3,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange)](https://www.rust-lang.org/)
 
-The **Avadhi Time Collector** is a lightweight Rust application that runs as a **scheduled system service** on Linux. It reads system boot/shutdown logs (`wtmp`) to calculate daily work spans and posts them to the
+The **Avadhi Time Collector** is a lightweight Rust application that runs as a **scheduled system service** on Linux.
+It reads system boot/shutdown logs (`wtmp`) to calculate daily work spans and posts them to the
 [Avadhi Time Tracker](https://www.avadhi.space/).
 
 The collector is designed to:
@@ -26,10 +27,11 @@ This command:
 
 * Downloads the latest release
 * Installs the collector into `/opt/avadhi-collector`
-* Installs a **systemd service + timer**
-* Enables the timer (not the service directly)
+* Creates a **dedicated system user** (`avadhi`)
+* Installs a **systemd service template + timer**
+* Enables the **timer only** (the service is never enabled directly)
 
-This is the **recommended and professional** distribution method.
+This is the **recommended and production-grade** installation method.
 
 ---
 
@@ -57,15 +59,17 @@ Systemd units are installed to:
 
 ```text
 /etc/systemd/system/
-├── avadhi-collector.service
-├── avadhi-collector.timer
+├── avadhi@.service         # Template service (oneshot worker)
+├── avadhi.timer            # Daily scheduler
 ```
+
+> There is **no long-running service** and no dispatcher unit.
 
 ---
 
 ## 🔐 Mandatory One-Time Authentication
 
-The collector **cannot run** until user credentials are provided.
+The collector **will not post data** until credentials are provided.
 
 ### Step 1: Run setup interactively (once)
 
@@ -110,7 +114,7 @@ This matches the intended data model:
 ### 1. Verify timer is enabled
 
 ```bash
-systemctl status avadhi-collector.timer
+systemctl status avadhi.timer
 ```
 
 Expected:
@@ -119,6 +123,8 @@ Expected:
 Loaded: loaded
 Active: active (waiting)
 ```
+
+---
 
 ### 2. Verify next scheduled run
 
@@ -131,17 +137,21 @@ Expected output includes:
 * NEXT run time
 * LAST run time (after first execution)
 
-### 3. Verify service execution logs
+---
+
+### 3. Verify execution logs
+
+The timer triggers a transient instance of `avadhi@.service`.
 
 ```bash
-journalctl -u avadhi-collector.service --since today
+journalctl -u avadhi@.service --since today
 ```
 
 You should see:
 
 * Successful startup
 * API POST confirmation
-* Clean exit (oneshot)
+* Clean exit (`Type=oneshot`)
 
 ---
 
@@ -162,20 +172,21 @@ cd /opt/avadhi-collector
 ./avadhi-collector setup
 ```
 
-Then wait for the next scheduled timer run
-(or trigger manually for testing):
+To test immediately:
 
 ```bash
-sudo systemctl start avadhi-collector.service
+sudo systemctl start avadhi@$(date +%s).service
 ```
+
+(The timer will resume normal scheduling afterward.)
 
 ---
 
 ## 📌 Notes
 
 * The service is **timer-driven**, not long-running
-* Configuration remains in `/opt/avadhi-collector`
-* Safe to install on laptops, desktops, or servers
+* Configuration lives entirely in `/opt/avadhi-collector`
+* Safe for laptops, desktops, and servers
 * Future versions may support always-on systems via sleep-based logic
 
 ---
@@ -184,131 +195,50 @@ sudo systemctl start avadhi-collector.service
 
 * 🌐 Web App: [https://www.avadhi.space/](https://www.avadhi.space/)
 * 📦 Releases: [https://github.com/urwithajit9/avadhi-collector/releases](https://github.com/urwithajit9/avadhi-collector/releases)
-* 📘 Documentation: [https://github.com/urwithajit9/avadhi-collector](https://github.com/urwithajit9/avadhi-collector)
-
----
-
-### Final status
-
-* ✔ Timer-based execution
-* ✔ Weekend-safe
-* ✔ Non-interactive service
-* ✔ Clear verification path
-* ✔ Production-grade install flow
-
+* 📘 Source: [https://github.com/urwithajit9/avadhi-collector](https://github.com/urwithajit9/avadhi-collector)
 
 ---
 
 # 🧹 Avadhi Collector – Uninstall Guide (Linux)
 
-## What this removes
-
-* systemd **service instance** (`avadhi@<user>.service`)
-* systemd **timer** (`avadhi.timer`)
-* systemd **unit files**
-* installed files under `/opt/avadhi-collector`
-* all local configuration (`Config.toml`, `AvadhiConfig.toml`)
+The release includes an official uninstall script.
 
 ---
 
-## 1️⃣ Stop and disable systemd units
+## 🚨 What This Removes
 
-Run as your normal user (sudo will be invoked where needed).
-
-```bash
-USER_NAME=$(whoami)
-
-# Stop & disable service instance
-sudo systemctl stop avadhi@$USER_NAME.service 2>/dev/null || true
-sudo systemctl disable avadhi@$USER_NAME.service 2>/dev/null || true
-
-# Stop & disable timer
-sudo systemctl stop avadhi.timer 2>/dev/null || true
-sudo systemctl disable avadhi.timer 2>/dev/null || true
-```
+* `avadhi.timer`
+* `avadhi@.service` (template)
+* All instantiated service runs
+* `/opt/avadhi-collector`
+* Local configuration files
+* Dedicated system user (`avadhi`)
 
 ---
 
-## 2️⃣ Remove systemd unit files
+## ✅ Recommended Uninstall Method
 
 ```bash
-# Remove service template
-sudo rm -f /etc/systemd/system/avadhi@.service
-
-# Remove timer unit
-sudo rm -f /etc/systemd/system/avadhi.timer
-
-# Reload systemd
-sudo systemctl daemon-reload
-sudo systemctl reset-failed
+cd avadhi-linux
+./uninstall.sh
 ```
 
-Verification:
-
-```bash
-systemctl list-unit-files | grep avadhi || echo "No avadhi units found"
-```
+The script is **safe and idempotent**.
 
 ---
 
-## 3️⃣ Remove installed files and configs
+## 🔍 Manual Verification (Optional)
 
 ```bash
-sudo rm -rf /opt/avadhi-collector
-```
-
-Verification:
-
-```bash
-ls /opt | grep avadhi || echo "/opt/avadhi-collector removed"
-```
-
----
-
-## 4️⃣ (Optional) Remove dedicated system user
-
-⚠️ **Only do this if the user is not used for anything else.**
-
-```bash
-sudo userdel -r avadhi
-```
-
-Verify:
-
-```bash
-id avadhi || echo "User avadhi removed"
-```
-
----
-
-## 5️⃣ Final verification checklist
-
-```bash
-# No services
-systemctl list-units | grep avadhi || echo "No running units"
-
-# No timers
 systemctl list-timers | grep avadhi || echo "No timers scheduled"
-
-# No files
+systemctl list-units | grep avadhi || echo "No running units"
 test -d /opt/avadhi-collector || echo "Install directory removed"
+id avadhi || echo "System user removed"
 ```
 
 ---
 
-# 🧠 Why this works (design-aligned)
-
-| Component               | Reason                                      |
-| ----------------------- | ------------------------------------------- |
-| `avadhi@.service`       | Template instance → must remove template    |
-| `avadhi.timer`          | System-wide daily scheduler                 |
-| `/opt/avadhi-collector` | Single source of truth for binary + configs |
-| `daemon-reload`         | Required after removing unit files          |
-| `reset-failed`          | Clears stale systemd state                  |
-
----
-
-## 🔁 Reinstall after uninstall
+## 🔁 Reinstall
 
 ```bash
 curl -fsSL https://avadhi.space/install.sh | bash
@@ -319,5 +249,18 @@ or
 ```bash
 curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/scripts/install-bootstrap.sh | bash
 ```
+
+---
+
+## ✅ Final Status
+
+* ✔ Timer-based execution
+* ✔ Dedicated system user
+* ✔ Weekend-safe
+* ✔ No daemon process
+* ✔ Clean install / uninstall
+* ✔ Production-ready
+
+---
 
 

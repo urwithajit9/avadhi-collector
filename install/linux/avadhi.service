@@ -1,6 +1,0 @@
-[Unit]
-Description=Avadhi Collector Dispatcher
-
-[Service]
-Type=oneshot
-ExecStart=/bin/systemctl start avadhi@%u.service

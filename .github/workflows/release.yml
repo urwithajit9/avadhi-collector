@@ -9,25 +9,38 @@ jobs:
   build-linux:
     name: Build Linux Binary and Package
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      # --------------------------------------------------
+      # 1. Checkout repository
+      # --------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 1. Install Rust Toolchain
+      # --------------------------------------------------
+      # 2. Install Rust toolchain
+      # --------------------------------------------------
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
-      # 2. Build the Linux binary
+      # --------------------------------------------------
+      # 3. Build release binary
+      # --------------------------------------------------
       - name: Build Release Binary
         run: cargo build --release
 
-      # 3. Create distribution directory
+      # --------------------------------------------------
+      # 4. Prepare distribution directory
+      # --------------------------------------------------
       - name: Setup Packaging Directory
         run: |
+          set -e
+
           mkdir avadhi-linux
 
           # Binary
@@ -36,27 +49,32 @@ jobs:
           # Config template
           cp Config.toml.example avadhi-linux/
 
-          # Installer
+          # Installer scripts
           cp install/linux/install.sh avadhi-linux/
-
-          # Systemd units (NEW)
-          cp install/linux/avadhi@.service avadhi-linux/
-          cp install/linux/avadhi.service avadhi-linux/
-          cp install/linux/avadhi.timer avadhi-linux/
-
-          # Uninstall script
           cp install/linux/uninstall.sh avadhi-linux/
 
+          # Systemd units (FINAL SET)
+          cp install/linux/avadhi@.service avadhi-linux/
+          cp install/linux/avadhi.timer avadhi-linux/
 
-      # 4. Create tarball
+          echo "Packaged files:"
+          ls -l avadhi-linux
+
+      # --------------------------------------------------
+      # 5. Create tarball
+      # --------------------------------------------------
       - name: Archive Release Assets
-        run: tar -czvf avadhi-linux.tar.gz avadhi-linux
+        run: |
+          tar -czvf avadhi-linux.tar.gz avadhi-linux
 
-      # 5. Publish GitHub Release
+      # --------------------------------------------------
+      # 6. Publish GitHub Release
+      # --------------------------------------------------
       - name: Create GitHub Release and Upload
         uses: softprops/action-gh-release@v2
         with:
           files: avadhi-linux.tar.gz
           body_path: README.md
           overwrite_files: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

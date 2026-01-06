@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # --- Avadhi Collector Uninstall Script ---
+# Mode: systemd timer + template service + dedicated system user
 
 set -e
 
 INSTALL_DIR="/opt/avadhi-collector"
 SERVICE_USER="avadhi"
 
-DISPATCHER_UNIT="avadhi.service"
 TEMPLATE_UNIT="avadhi@.service"
 TIMER_UNIT="avadhi.timer"
 
@@ -20,14 +20,14 @@ echo "1. Stopping and disabling timer..."
 sudo systemctl stop "$TIMER_UNIT" 2>/dev/null || true
 sudo systemctl disable "$TIMER_UNIT" 2>/dev/null || true
 
-# --- Step 2: Stop any running services ---
-echo "2. Stopping running services..."
-sudo systemctl stop "$DISPATCHER_UNIT" 2>/dev/null || true
-sudo systemctl stop "$TEMPLATE_UNIT" 2>/dev/null || true
+# --- Step 2: Stop any instantiated services ---
+echo "2. Stopping any running service instances..."
+for svc in $(systemctl list-units --type=service --all | awk '{print $1}' | grep '^avadhi@'); do
+    sudo systemctl stop "$svc" 2>/dev/null || true
+done
 
 # --- Step 3: Remove systemd unit files ---
 echo "3. Removing systemd unit files..."
-sudo rm -f "/etc/systemd/system/$DISPATCHER_UNIT"
 sudo rm -f "/etc/systemd/system/$TEMPLATE_UNIT"
 sudo rm -f "/etc/systemd/system/$TIMER_UNIT"
 

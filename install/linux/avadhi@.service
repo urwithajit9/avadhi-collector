@@ -1,5 +1,5 @@
 [Unit]
-Description=Avadhi Time Collector (daily run)
+Description=Avadhi Time Collector (%i)
 Documentation=https://github.com/urwithajit9/avadhi-collector
 Requires=network-online.target
 After=network-online.target
@@ -7,17 +7,16 @@ After=network-online.target
 [Service]
 Type=oneshot
 
-# Run as dedicated collector user (can be created later)
-# For now this will be substituted by installer
+# Dedicated service user
 User=avadhi
 
-# Ensure all relative paths resolve correctly
+# Ensure relative paths resolve correctly
 WorkingDirectory=/opt/avadhi-collector
 
-# Explicit command — no defaults, no arguments
+# Main execution
 ExecStart=/opt/avadhi-collector/avadhi-collector run
 
-# Hard fail if config or binary is missing
+# Hard preflight checks
 ExecStartPre=/usr/bin/test -x /opt/avadhi-collector/avadhi-collector
 ExecStartPre=/usr/bin/test -f /opt/avadhi-collector/Config.toml
 ExecStartPre=/usr/bin/test -f /opt/avadhi-collector/AvadhiConfig.toml
@@ -26,7 +25,7 @@ ExecStartPre=/usr/bin/test -f /opt/avadhi-collector/AvadhiConfig.toml
 StandardOutput=journal
 StandardError=journal
 
-# Security hardening (safe defaults)
+# Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
@@ -34,6 +33,6 @@ ProtectHome=true
 
 [Install]
 # IMPORTANT:
-# DO NOT enable this service directly.
-# It is started only by the timer.
+# This service MUST NOT be enabled directly.
+# It is triggered only by avadhi.timer.
 WantedBy=timers.target

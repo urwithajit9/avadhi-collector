@@ -15,5 +15,9 @@ RandomizedDelaySec=10m
 # Accuracy is not critical; allow systemd flexibility
 AccuracySec=5m
 
+# IMPORTANT:
+# Explicitly bind to the template service
+Unit=avadhi@default.service
+
 [Install]
 WantedBy=timers.target
