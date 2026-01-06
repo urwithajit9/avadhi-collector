@@ -197,3 +197,127 @@ sudo systemctl start avadhi-collector.service
 * ✔ Production-grade install flow
 
 
+---
+
+# 🧹 Avadhi Collector – Uninstall Guide (Linux)
+
+## What this removes
+
+* systemd **service instance** (`avadhi@<user>.service`)
+* systemd **timer** (`avadhi.timer`)
+* systemd **unit files**
+* installed files under `/opt/avadhi-collector`
+* all local configuration (`Config.toml`, `AvadhiConfig.toml`)
+
+---
+
+## 1️⃣ Stop and disable systemd units
+
+Run as your normal user (sudo will be invoked where needed).
+
+```bash
+USER_NAME=$(whoami)
+
+# Stop & disable service instance
+sudo systemctl stop avadhi@$USER_NAME.service 2>/dev/null || true
+sudo systemctl disable avadhi@$USER_NAME.service 2>/dev/null || true
+
+# Stop & disable timer
+sudo systemctl stop avadhi.timer 2>/dev/null || true
+sudo systemctl disable avadhi.timer 2>/dev/null || true
+```
+
+---
+
+## 2️⃣ Remove systemd unit files
+
+```bash
+# Remove service template
+sudo rm -f /etc/systemd/system/avadhi@.service
+
+# Remove timer unit
+sudo rm -f /etc/systemd/system/avadhi.timer
+
+# Reload systemd
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+```
+
+Verification:
+
+```bash
+systemctl list-unit-files | grep avadhi || echo "No avadhi units found"
+```
+
+---
+
+## 3️⃣ Remove installed files and configs
+
+```bash
+sudo rm -rf /opt/avadhi-collector
+```
+
+Verification:
+
+```bash
+ls /opt | grep avadhi || echo "/opt/avadhi-collector removed"
+```
+
+---
+
+## 4️⃣ (Optional) Remove dedicated system user
+
+⚠️ **Only do this if the user is not used for anything else.**
+
+```bash
+sudo userdel -r avadhi
+```
+
+Verify:
+
+```bash
+id avadhi || echo "User avadhi removed"
+```
+
+---
+
+## 5️⃣ Final verification checklist
+
+```bash
+# No services
+systemctl list-units | grep avadhi || echo "No running units"
+
+# No timers
+systemctl list-timers | grep avadhi || echo "No timers scheduled"
+
+# No files
+test -d /opt/avadhi-collector || echo "Install directory removed"
+```
+
+---
+
+# 🧠 Why this works (design-aligned)
+
+| Component               | Reason                                      |
+| ----------------------- | ------------------------------------------- |
+| `avadhi@.service`       | Template instance → must remove template    |
+| `avadhi.timer`          | System-wide daily scheduler                 |
+| `/opt/avadhi-collector` | Single source of truth for binary + configs |
+| `daemon-reload`         | Required after removing unit files          |
+| `reset-failed`          | Clears stale systemd state                  |
+
+---
+
+## 🔁 Reinstall after uninstall
+
+```bash
+curl -fsSL https://avadhi.space/install.sh | bash
+```
+
+or
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/scripts/install-bootstrap.sh | bash
+```
+
+

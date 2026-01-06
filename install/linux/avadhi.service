@@ -1,29 +1,6 @@
 [Unit]
-Description=Avadhi Time Collector Service for User %i
-Documentation=https://github.com/urwithajit9/avadhi-collector
-# Require network connectivity before attempting to start
-Requires=network-online.target
-After=network-online.target
+Description=Avadhi Collector Dispatcher
 
 [Service]
-# Service Type: 'oneshot' is correct for a script that runs, posts data, and exits.
 Type=oneshot
-
-# IMPORTANT: Run the service as the user specified in the instance name (e.g., 'ajit')
-# This is crucial so it can read/write its own AvadhiConfig.toml.
-User=%i
-
-# Set the working directory to where the executable and config files are located.
-WorkingDirectory=/opt/avadhi-collector
-
-# The command to execute: use the 'run' subcommand, as determined by your testing.
-ExecStart=/opt/avadhi-collector/avadhi-collector run
-
-# Optional: Configuration for logging
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-# The service should be started when the system is fully operational.
-# For user-specific services, you might prefer multi-user.target or a timer.
-WantedBy=multi-user.target
+ExecStart=/bin/systemctl start avadhi@%u.service

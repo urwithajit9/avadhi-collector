@@ -40,8 +40,13 @@ jobs:
           cp install/linux/install.sh avadhi-linux/
 
           # Systemd units (NEW)
-          cp install/linux/avadhi-collector.service avadhi-linux/
-          cp install/linux/avadhi-collector.timer avadhi-linux/
+          cp install/linux/avadhi@.service avadhi-linux/
+          cp install/linux/avadhi.service avadhi-linux/
+          cp install/linux/avadhi.timer avadhi-linux/
+
+          # Uninstall script
+          cp install/linux/uninstall.sh avadhi-linux/
+
 
       # 4. Create tarball
       - name: Archive Release Assets
