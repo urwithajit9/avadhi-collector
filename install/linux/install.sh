@@ -91,6 +91,7 @@ done
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$TIMER_UNIT"
+sudo systemctl start "$TIMER_UNIT"
 
 # ---------------- Step 5: Setup Confirmation ----------------
 echo
@@ -126,9 +127,47 @@ select opt in "${options[@]}"; do
     esac
 done
 
+# ---------------- Step 6: Post-Install Verification ----------------
 echo
 echo "--------------------------------------------------"
-echo "✅ Installation finished."
+echo "Running post-install verification..."
+
+# Check binary
+if [ -x "$INSTALL_DIR/avadhi-collector" ]; then
+    echo "✔ Binary exists and is executable."
+else
+    echo "❌ Binary missing or not executable!"
+fi
+
+# Check Config.toml
+if [ -f "$INSTALL_DIR/Config.toml" ]; then
+    echo "✔ Config.toml found."
+else
+    echo "❌ Config.toml missing!"
+fi
+
+# Check AvadhiConfig.toml
+if [ -f "$INSTALL_DIR/AvadhiConfig.toml" ]; then
+    echo "✔ AvadhiConfig.toml found."
+else
+    echo "⚠ AvadhiConfig.toml not found. User setup may be required."
+fi
+
+# Check timer status
+TIMER_STATUS=$(systemctl is-active "$TIMER_UNIT")
+if [ "$TIMER_STATUS" = "active" ]; then
+    echo "✔ Timer '$TIMER_UNIT' is active."
+else
+    echo "⚠ Timer '$TIMER_UNIT' is inactive. Start with: sudo systemctl start $TIMER_UNIT"
+fi
+
+# Show next scheduled run
+echo "Next scheduled run for Avadhi Collector:"
+systemctl list-timers "$TIMER_UNIT" --all | awk 'NR==2 {print "   " $1, $2, $3, $4, $5, $6, $7}'
+
+echo
+echo "--------------------------------------------------"
+echo "✅ Installation finished successfully."
 echo "Timer is enabled and will run daily at 10:00 local time."
 echo "To check timer: systemctl list-timers | grep avadhi"
 echo "To run setup later: sudo -u $SERVICE_USER $INSTALL_DIR/avadhi-collector setup"
