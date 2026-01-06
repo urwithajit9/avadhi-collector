@@ -56,13 +56,12 @@ if ! (cd "$EXTRACTED_DIR" && sudo bash install.sh); then
 fi
 
 # --- 3. Post-Install Authentication Guidance ---
+echo
 echo "--------------------------------------------------------"
 echo "✅ CORE INSTALLATION COMPLETE"
 echo "--------------------------------------------------------"
 echo ""
 
-echo "ℹ️ AUTHENTICATION (OUT OF BAND)"
-echo ""
 if [ -f "$INSTALL_DIR/AvadhiConfig.toml" ]; then
     echo "User configuration detected at:"
     echo "  $INSTALL_DIR/AvadhiConfig.toml"
@@ -71,7 +70,7 @@ else
     echo "No user configuration detected."
     echo "To authenticate the collector and enable posting, run the interactive setup:"
     echo ""
-    echo "  sudo -u $SERVICE_USER $INSTALL_DIR/avadhi-collector setup"
+    echo "  sudo -u $SERVICE_USER bash -c 'cd $INSTALL_DIR && ./avadhi-collector setup'"
     echo ""
     echo "Follow the prompts to login via browser, then enter:"
     echo "  - User ID (UUID)"
@@ -115,5 +114,6 @@ rm -rf "$TEMP_DIR"
 echo "Cleanup finished. Installation directory: $INSTALL_DIR"
 echo ""
 echo "✅ Bootstrap installation finished. Timer-based execution ready."
-echo "To run setup manually later: sudo -u $SERVICE_USER $INSTALL_DIR/avadhi-collector setup"
+echo "To run setup manually later (interactive):"
+echo "  sudo -u $SERVICE_USER bash -c 'cd $INSTALL_DIR && ./avadhi-collector setup'"
 echo "--------------------------------------------------------"
