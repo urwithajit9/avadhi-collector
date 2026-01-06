@@ -4,13 +4,12 @@
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange)](https://www.rust-lang.org/)
 
 The **Avadhi Time Collector** is a lightweight Rust application that runs as a **scheduled system service** on Linux.
-It reads system boot/shutdown logs (`wtmp`) to calculate daily work spans and posts them to the
-[Avadhi Time Tracker](https://www.avadhi.space/).
+It reads system boot/shutdown logs (`wtmp`) to calculate daily work spans and posts them to the [Avadhi Time Tracker](https://www.avadhi.space/).
 
 The collector is designed to:
 
 * Run **once per day**
-* Execute during **working hours (10:00 local time)**
+* Execute during **working hours (~10:00 local time)**
 * Recover automatically if the system was powered off
 * Require **no background daemon**
 * Be robust across shutdowns, weekends, and holidays
@@ -31,8 +30,6 @@ This command:
 * Installs a **systemd service template + timer**
 * Enables the **timer only** (the service is never enabled directly)
 
-This is the **recommended and production-grade** installation method.
-
 ---
 
 ## 📋 Prerequisites
@@ -46,20 +43,18 @@ This is the **recommended and production-grade** installation method.
 
 ## 📁 Installation Layout
 
-All runtime files are kept together:
-
 ```text
 /opt/avadhi-collector/
 ├── avadhi-collector        # Rust binary
 ├── Config.toml             # Static backend configuration
-├── AvadhiConfig.toml       # User tokens (created during setup)
+├── AvadhiConfig.toml       # User tokens and last_posted_date
 ```
 
-Systemd units are installed to:
+Systemd units:
 
 ```text
 /etc/systemd/system/
-├── avadhi@.service         # Template service (oneshot worker)
+├── avadhi@.service         # Template service (oneshot)
 ├── avadhi.timer            # Daily scheduler
 ```
 
@@ -67,51 +62,68 @@ Systemd units are installed to:
 
 ---
 
-## 🔐 Mandatory One-Time Authentication
+## 🔧 Setup Modes
 
-The collector **will not post data** until credentials are provided.
+During installation, the collector supports **two modes**:
 
-### Step 1: Run setup interactively (once)
+1. **Setup Now** – Interactive setup immediately collects credentials:
 
-```bash
-cd /opt/avadhi-collector
-./avadhi-collector setup
+   ```bash
+   cd /opt/avadhi-collector
+   ./avadhi-collector setup
+   ```
+
+   The script will prompt for:
+
+   * User ID (UUID)
+   * Access Token
+   * Refresh Token
+   * Optional: Last posted date for historical data backfill (`YYYY-MM-DD`)
+
+   This mode is **recommended for first-time users**.
+
+2. **Setup Later** – Installer creates `AvadhiConfig.toml` with proper permissions.
+   You can edit the file manually:
+
+   ```bash
+   sudo nano /opt/avadhi-collector/AvadhiConfig.toml
+   sudo chown avadhi:avadhi /opt/avadhi-collector/AvadhiConfig.toml
+   sudo chmod 600 /opt/avadhi-collector/AvadhiConfig.toml
+   ```
+
+> Installer always ensures proper ownership (`avadhi`) and secure permissions (`600`) even if setup is deferred.
+
+---
+
+## 🔐 last_posted_date Field
+
+`AvadhiConfig.toml` now supports a field:
+
+```toml
+last_posted_date = "YYYY-MM-DD"
 ```
 
-This will:
+Usage:
 
-* Open the browser to the login page
-* Prompt for:
-
-  * User ID (UUID)
-  * Access Token
-  * Refresh Token
-* Create `AvadhiConfig.toml`
-
-> Run this command as your **normal user**, not with `sudo`.
+* **First-time installation, no historical posts** → leave empty, all historical data will be posted.
+* **Existing installation with prior posts** → set to a recent date (1–2 days before last posted) to prevent duplicate submissions and allow safe backfill.
 
 ---
 
-## ⏰ How Execution Works (Important)
+## ⏰ How Execution Works
 
 * The collector **does not run continuously**
-* It is triggered by a **systemd timer**
+* Triggered by **systemd timer**
 * Runs **once per day at ~10:00 local time**
-* If the system is powered off at 10:00:
-
-  * It runs once on the **next boot**
+* If the system is off at 10:00 → executes once on next boot
 * Weekends are **included**
-* Missed days are **not backfilled**
-
-This matches the intended data model:
-
-> “Finalize yesterday’s work span during the next working window.”
+* Missed days are **not automatically backfilled** (use `last_posted_date` for controlled backfill)
 
 ---
 
-## 🔎 Verification (Required)
+## 🔎 Verification
 
-### 1. Verify timer is enabled
+### 1. Check timer
 
 ```bash
 systemctl status avadhi.timer
@@ -124,42 +136,25 @@ Loaded: loaded
 Active: active (waiting)
 ```
 
----
-
-### 2. Verify next scheduled run
+### 2. Next scheduled run
 
 ```bash
 systemctl list-timers | grep avadhi
 ```
 
-Expected output includes:
+Shows NEXT and LAST run times.
 
-* NEXT run time
-* LAST run time (after first execution)
-
----
-
-### 3. Verify execution logs
-
-The timer triggers a transient instance of `avadhi@.service`.
+### 3. Execution logs
 
 ```bash
 journalctl -u avadhi@.service --since today
 ```
 
-You should see:
-
-* Successful startup
-* API POST confirmation
-* Clean exit (`Type=oneshot`)
-
 ---
 
 ## 🛠 Troubleshooting
 
-### Tokens expired / unauthorized (401)
-
-Symptom:
+### Missing / expired tokens
 
 ```text
 API Error: Token unauthorized or expired (401)
@@ -172,62 +167,30 @@ cd /opt/avadhi-collector
 ./avadhi-collector setup
 ```
 
-To test immediately:
+Test immediately:
 
 ```bash
 sudo systemctl start avadhi@$(date +%s).service
 ```
 
-(The timer will resume normal scheduling afterward.)
-
 ---
 
-## 📌 Notes
-
-* The service is **timer-driven**, not long-running
-* Configuration lives entirely in `/opt/avadhi-collector`
-* Safe for laptops, desktops, and servers
-* Future versions may support always-on systems via sleep-based logic
-
----
-
-## 🔗 Links
-
-* 🌐 Web App: [https://www.avadhi.space/](https://www.avadhi.space/)
-* 📦 Releases: [https://github.com/urwithajit9/avadhi-collector/releases](https://github.com/urwithajit9/avadhi-collector/releases)
-* 📘 Source: [https://github.com/urwithajit9/avadhi-collector](https://github.com/urwithajit9/avadhi-collector)
-
----
-
-# 🧹 Avadhi Collector – Uninstall Guide (Linux)
-
-The release includes an official uninstall script.
-
----
-
-## 🚨 What This Removes
-
-* `avadhi.timer`
-* `avadhi@.service` (template)
-* All instantiated service runs
-* `/opt/avadhi-collector`
-* Local configuration files
-* Dedicated system user (`avadhi`)
-
----
-
-## ✅ Recommended Uninstall Method
+## 🧹 Uninstall Guide
 
 ```bash
 cd avadhi-linux
 ./uninstall.sh
 ```
 
-The script is **safe and idempotent**.
+Removes:
 
----
+* `avadhi.timer`
+* `avadhi@.service` (template)
+* `/opt/avadhi-collector`
+* Local configuration files
+* Dedicated system user (`avadhi`)
 
-## 🔍 Manual Verification (Optional)
+Verification:
 
 ```bash
 systemctl list-timers | grep avadhi || echo "No timers scheduled"
@@ -255,12 +218,14 @@ curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/s
 ## ✅ Final Status
 
 * ✔ Timer-based execution
+* ✔ Interactive / deferred setup modes
 * ✔ Dedicated system user
 * ✔ Weekend-safe
 * ✔ No daemon process
+* ✔ Historical backfill support via `last_posted_date`
 * ✔ Clean install / uninstall
 * ✔ Production-ready
 
----
+
 
 

@@ -61,7 +61,7 @@ else
     exit 1
 fi
 
-# Create active config if missing (never overwrite)
+# Active Config
 if [ ! -f "$INSTALL_DIR/Config.toml" ]; then
     sudo cp "$INSTALL_DIR/Config.toml.example" "$INSTALL_DIR/Config.toml"
     echo "   Config.toml created."
@@ -89,4 +89,47 @@ for UNIT in "$TEMPLATE_UNIT" "$TIMER_UNIT"; do
     fi
 done
 
-# ----------------
+sudo systemctl daemon-reload
+sudo systemctl enable "$TIMER_UNIT"
+
+# ---------------- Step 5: Setup Confirmation ----------------
+echo
+echo "--------------------------------------------------"
+echo "Avadhi Collector installation complete."
+echo "Next step: user setup for tokens and initial configuration."
+echo "You can choose to setup now (interactive) or later."
+echo "--------------------------------------------------"
+
+PS3="Select option: "
+options=("Setup Now" "Setup Later")
+select opt in "${options[@]}"; do
+    case $opt in
+        "Setup Now")
+            echo "Starting interactive setup..."
+            sudo -u "$SERVICE_USER" "$INSTALL_DIR/avadhi-collector" setup
+            break
+            ;;
+        "Setup Later")
+            echo "Skipping interactive setup."
+            # Ensure AvadhiConfig.toml exists with proper ownership/permissions
+            if [ ! -f "$INSTALL_DIR/AvadhiConfig.toml" ]; then
+                sudo touch "$INSTALL_DIR/AvadhiConfig.toml"
+                sudo chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/AvadhiConfig.toml"
+                sudo chmod 600 "$INSTALL_DIR/AvadhiConfig.toml"
+                echo "   Created empty AvadhiConfig.toml with secure permissions."
+            fi
+            break
+            ;;
+        *)
+            echo "Invalid option. Please select 1 or 2."
+            ;;
+    esac
+done
+
+echo
+echo "--------------------------------------------------"
+echo "✅ Installation finished."
+echo "Timer is enabled and will run daily at 10:00 local time."
+echo "To check timer: systemctl list-timers | grep avadhi"
+echo "To run setup later: sudo -u $SERVICE_USER $INSTALL_DIR/avadhi-collector setup"
+echo "--------------------------------------------------"
