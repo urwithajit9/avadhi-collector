@@ -27,11 +27,7 @@ echo "--------------------------------------------------"
 # ---------------- Step 0: System User ----------------
 echo "0. Ensuring system user '$SERVICE_USER' exists..."
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-    sudo useradd \
-        --system \
-        --home "$INSTALL_DIR" \
-        --shell /usr/sbin/nologin \
-        "$SERVICE_USER"
+    sudo useradd --system --home "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
     echo "   System user '$SERVICE_USER' created."
 else
     echo "   System user '$SERVICE_USER' already exists."
@@ -104,6 +100,8 @@ if [ -t 0 ]; then
     done
 else
     echo "Non-interactive shell detected. Skipping interactive setup."
+    echo "To run interactive setup later, execute:"
+    echo "  sudo -u $SERVICE_USER bash -c 'cd $INSTALL_DIR && ./avadhi-collector setup'"
     [ ! -f "$INSTALL_DIR/AvadhiConfig.toml" ] && \
         sudo touch "$INSTALL_DIR/AvadhiConfig.toml" && \
         sudo chown "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR/AvadhiConfig.toml" && \
@@ -129,5 +127,5 @@ echo "--------------------------------------------------"
 echo "✅ Installation finished successfully."
 echo "Timer is enabled and will run daily at 10:00 local time."
 echo "To check timer: systemctl list-timers | grep avadhi"
-echo "To run setup later: sudo -u $SERVICE_USER $INSTALL_DIR/avadhi-collector setup"
+echo "To run setup later: sudo -u $SERVICE_USER bash -c 'cd $INSTALL_DIR && ./avadhi-collector setup'"
 echo "--------------------------------------------------"
