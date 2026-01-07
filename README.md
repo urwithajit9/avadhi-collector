@@ -227,5 +227,38 @@ curl -fsSL https://raw.githubusercontent.com/urwithajit9/avadhi-collector/main/s
 * ✔ Production-ready
 
 
+##  How to trigger Avadhi **manually**
+
+### Option A — Trigger via systemd (recommended)
+
+This mirrors real execution:
+
+```bash
+sudo systemctl start avadhi@default
+```
+
+Then check logs:
+
+```bash
+journalctl -u avadhi@default --since today
+```
+
+This works **only if** `avadhi@.service` exists.
+
+---
+
+### Option B — Direct binary execution (debug only)
+
+Run exactly what systemd would run:
+
+```bash
+sudo -u avadhi /opt/avadhi-collector/avadhi-collector
+```
+
+
+
+
+
+
 
 
